@@ -1,0 +1,115 @@
+FUNCTION_BLOCK "FB_Valve"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Enable : Bool;
+      Interlock : Bool := TRUE;
+      AutoOpen : Bool;
+      ManualMode : Bool;
+      GroupReset : Bool;
+      OpenedFb : Bool;
+      ClosedFb : Bool;
+      UseOpenedFb : Bool := TRUE;
+      UseClosedFb : Bool := TRUE;
+      DoubleActing : Bool := FALSE;      // TRUE = separate close coil
+      TravelTime : Time := T#5S;         // supervision time for both directions
+   END_VAR
+
+   VAR_OUTPUT
+      OpenOut : Bool;
+      CloseOut : Bool;                   // only used when DoubleActing = TRUE
+      Opened : Bool;
+      Closed : Bool;
+      Fault : Bool;
+      FaultCode : Int;
+   END_VAR
+
+   VAR
+      Hmi : "UDT_DevIf";
+      OpenTimer : TON_TIME;
+      CloseTimer : TON_TIME;
+      Cmd : Bool;                        // TRUE = commanded open
+      FaultLatch : Bool;
+      FaultCodeLatch : Int;
+   END_VAR
+
+BEGIN
+    // ------------------------------------------------------------------
+    // 1. Command source
+    // ------------------------------------------------------------------
+    IF #ManualMode THEN
+        IF #Hmi.Cmd_Open OR #Hmi.Cmd_Start THEN
+            #Cmd := TRUE;
+        END_IF;
+        IF #Hmi.Cmd_Close OR #Hmi.Cmd_Stop THEN
+            #Cmd := FALSE;
+        END_IF;
+    ELSE
+        #Cmd := #AutoOpen;
+    END_IF;
+
+    IF NOT #Enable OR NOT #Interlock OR #FaultLatch THEN
+        #Cmd := FALSE;                                 // fail safe: de-energise
+    END_IF;
+
+    #OpenOut := #Cmd;
+    #CloseOut := #DoubleActing AND NOT #Cmd;
+
+    // ------------------------------------------------------------------
+    // 2. Position evaluation
+    // ------------------------------------------------------------------
+    IF #UseOpenedFb THEN
+        #Opened := #OpenedFb;
+    ELSE
+        #Opened := #Cmd;
+    END_IF;
+
+    IF #UseClosedFb THEN
+        #Closed := #ClosedFb;
+    ELSE
+        #Closed := NOT #Cmd;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 3. Travel supervision
+    // ------------------------------------------------------------------
+    #OpenTimer(IN := #Cmd AND NOT #Opened, PT := #TravelTime);
+    #CloseTimer(IN := NOT #Cmd AND NOT #Closed, PT := #TravelTime);
+
+    IF #OpenTimer.Q OR #CloseTimer.Q THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 4;                          // travel timeout
+    END_IF;
+
+    IF #UseOpenedFb AND #UseClosedFb AND #OpenedFb AND #ClosedFb THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 5;                          // contradictory feedback
+    END_IF;
+
+    IF #GroupReset OR #Hmi.Cmd_Reset THEN
+        #FaultLatch := FALSE;
+        #FaultCodeLatch := 0;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 4. Status
+    // ------------------------------------------------------------------
+    #Fault := #FaultLatch;
+    #FaultCode := #FaultCodeLatch;
+
+    #Hmi.Sts_Cmd := #OpenOut;
+    #Hmi.Sts_Running := #Opened;
+    #Hmi.Sts_Stopped := #Closed;
+    #Hmi.Sts_Fault := #FaultLatch;
+    #Hmi.Sts_FaultCode := #FaultCodeLatch;
+    #Hmi.Sts_Interlocked := NOT #Interlock;
+    #Hmi.Sts_Enabled := #Enable;
+    #Hmi.Sts_ManualMode := #ManualMode;
+    #Hmi.Sts_Simulated := NOT #UseOpenedFb AND NOT #UseClosedFb;
+
+    #Hmi.Cmd_Open := FALSE;
+    #Hmi.Cmd_Close := FALSE;
+    #Hmi.Cmd_Start := FALSE;
+    #Hmi.Cmd_Stop := FALSE;
+    #Hmi.Cmd_Reset := FALSE;
+END_FUNCTION_BLOCK

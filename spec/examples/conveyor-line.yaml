@@ -1,0 +1,180 @@
+# A complete small machine: infeed/outfeed conveyors, a filling station with a
+# VFD-driven pump, two valves, tank level measurement, and a Unified panel.
+#
+#   python -m tiagen build spec/examples/conveyor-line.yaml -o out/conveyor
+#
+# The digital I/O count is sized to the CPU 1214C G2 onboard I/O
+# (14 DI / 10 DQ / 2 AI). The analog OUTPUT for the pump speed reference is not
+# on board - see plc.modules below.
+
+project:
+  name: BottleLine
+  author: cheezwedge
+  comment: Bottle filling line - conveyors, fill pump, divert valve.
+  tia_version: V21
+  directory: C:\TIA\Projects
+
+plc:
+  name: PLC_1
+  order_number: 6ES7214-1AH50-0XB0     # S7-1200 G2, CPU 1214C DC/DC/DC
+  firmware: V1.1
+  ip: 192.168.0.1
+  subnet_mask: 255.255.255.0
+  modules:
+    # The CPU 1214C has 2 analog INPUTS on board but no analog output, so the
+    # pump speed reference needs an analog output module or signal board.
+    #
+    # I could not verify S7-1200 G2 analog-output MLFBs offline, so this is a
+    # deliberate placeholder: open the hardware catalog in TIA V21 under
+    # SIMATIC S7-1200 G2 > AQ, copy the order number of the module you actually
+    # have, and paste it here. `tiagen validate` warns until you do.
+    # Then check the address TIA assigns it in the device view and make
+    # FillPump.signals.speed_out match.
+    - name: AQ_Module
+      order_number: REPLACE-WITH-CATALOG-MLFB
+      slot: 2
+
+hmi:
+  name: HMI_1
+  # Unified Comfort Panel MTP1200. Verify against your own catalog entry.
+  order_number: 6AV2128-3MB06-0AX0
+  runtime: unified
+  resolution: 1920x1080
+  ip: 192.168.0.10
+  # Omit `screens` and the generator derives Overview / Manual per area /
+  # Alarms / Trends / Diagnostics. List them here to take control.
+
+network:
+  subnet_name: PN_IE_1
+
+io:
+  di_start_byte: 0
+  do_start_byte: 0
+  ai_start_byte: 64
+
+modes: [Manual, Auto]
+
+safety:
+  category: PLd Cat.3 per ISO 13849-1
+  fail_safe_plc: false
+  notes: >
+    Guard door and E-stop are wired to a 3SK1 safety relay. The relay drops the
+    contactor supply directly. The PLC reads status contacts only.
+
+equipment:
+  # ---- operator controls -------------------------------------------------
+  - name: EStop
+    type: estop
+    area: Line
+    description: E-stop status contact from the safety relay
+
+  - name: GuardDoor
+    type: safety_gate
+    area: Line
+    description: Filling station guard door status
+
+  - name: StartPb
+    type: digital_input
+    area: Line
+    description: Line start pushbutton
+    options:
+      control_role: start
+
+  - name: StopPb
+    type: digital_input
+    area: Line
+    description: Line stop pushbutton (NC, TRUE = not pressed)
+    options:
+      control_role: stop
+
+  - name: ResetPb
+    type: digital_input
+    area: Line
+    description: Fault reset pushbutton
+    options:
+      control_role: reset
+
+  # ---- conveyors ---------------------------------------------------------
+  - name: InfeedConveyor
+    type: motor_dol
+    area: Infeed
+    description: Infeed conveyor drive
+    options:
+      feedback_timeout_ms: 3000
+
+  - name: OutfeedConveyor
+    type: motor_dol
+    area: Outfeed
+    description: Outfeed conveyor drive
+    options:
+      has_fault_feedback: false        # no separate overload contact wired
+      feedback_timeout_ms: 3000
+      interlock_from: [InfeedConveyor] # only runs while the infeed runs
+
+  # ---- filling station ---------------------------------------------------
+  - name: FillPump
+    type: vfd_analog
+    area: Filling
+    description: Filling pump on a VFD, analog speed reference
+    signals:
+      # Must match the address TIA assigns to the AQ module above.
+      speed_out: "%QW80"
+    options:
+      feedback_timeout_ms: 5000
+    scaling:
+      eng_min: 0.0
+      eng_max: 50.0                    # Hz at full reference
+      raw_min: 0.0
+      raw_max: 27648.0
+      unit: Hz
+
+  - name: FillValve
+    type: valve_single
+    area: Filling
+    description: Fill valve, spring return
+    options:
+      has_closed_feedback: false       # only an open limit switch is fitted
+      travel_timeout_ms: 2000
+
+  - name: DivertValve
+    type: valve_double
+    area: Outfeed
+    description: Reject divert valve, double acting
+    options:
+      travel_timeout_ms: 1500
+
+  - name: BottlePresent
+    type: digital_input
+    area: Filling
+    description: Bottle present at filling head
+
+  - name: TankLevel
+    type: analog_input
+    area: Filling
+    description: Supply tank level
+    scaling:
+      raw_min: 0.0
+      raw_max: 27648.0
+      eng_min: 0.0
+      eng_max: 100.0
+      unit: "%"
+      lo_lo: 5.0
+      lo: 15.0
+      hi: 90.0
+      hi_hi: 97.0
+
+  # ---- indication --------------------------------------------------------
+  - name: StackLightRun
+    type: digital_output
+    area: Line
+    description: Stack light, green - running
+
+  - name: StackLightFault
+    type: digital_output
+    area: Line
+    description: Stack light, red - fault
+
+  - name: Horn
+    type: digital_output
+    area: Line
+    description: Warning horn

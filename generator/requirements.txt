@@ -1,0 +1,2 @@
+# tiagen needs PyYAML only to read .yaml specs. JSON specs need nothing at all.
+PyYAML>=6.0

@@ -1,0 +1,47 @@
+# Smallest useful spec: one CPU, one motor, one sensor, no HMI.
+# Everything fits on the CPU 1214C G2 onboard I/O (14 DI / 10 DQ / 2 AI).
+#
+#   python -m tiagen build spec/examples/minimal.yaml -o out/minimal
+
+project:
+  name: TestRig
+  author: cheezwedge
+  comment: Minimal spec used to smoke-test the toolchain end to end.
+  tia_version: V21
+  directory: C:\TIA\Projects
+
+plc:
+  name: PLC_1
+  # SIMATIC S7-1200 G2, CPU 1214C DC/DC/DC.
+  order_number: 6ES7214-1AH50-0XB0
+  firmware: V1.1
+  ip: 192.168.0.1
+  subnet_mask: 255.255.255.0
+
+equipment:
+  - name: EStop
+    type: estop
+    description: Emergency stop status contact
+    # NC contact: TRUE = released. The safety function itself is the safety relay.
+
+  - name: StartPb
+    type: digital_input
+    description: Start pushbutton
+    options:
+      control_role: start
+
+  - name: StopPb
+    type: digital_input
+    description: Stop pushbutton (NC)
+    options:
+      control_role: stop
+
+  - name: TestMotor
+    type: motor_dol
+    description: Test rig motor
+    options:
+      feedback_timeout_ms: 2000
+
+  - name: PartPresent
+    type: digital_input
+    description: Part present sensor

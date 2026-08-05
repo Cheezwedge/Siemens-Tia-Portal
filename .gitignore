@@ -1,0 +1,29 @@
+# Generated artefacts. Everything under out/ comes from a spec - regenerate it.
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# .NET / MSBuild
+bin/
+obj/
+packages/
+*.user
+*.suo
+*.userprefs
+.vs/
+
+# Driver logs
+*.log
+
+# TIA Portal leftovers, in case a project is ever created inside the repo
+*.ap21
+*.al21
+~*
+UserFiles/
+System/
+Logs/
+TMP/

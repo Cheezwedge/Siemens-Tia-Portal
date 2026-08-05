@@ -1,0 +1,43 @@
+TYPE "UDT_DevIf"
+VERSION : 0.1
+   STRUCT
+      // ---- Commands: written by the HMI, consumed and cleared by the device FB ----
+      Cmd_Start : Bool;                  // momentary: start / open
+      Cmd_Stop : Bool;                   // momentary: stop / close
+      Cmd_Reset : Bool;                  // momentary: acknowledge fault
+      Cmd_Open : Bool;                   // momentary: valve open (double acting)
+      Cmd_Close : Bool;                  // momentary: valve close (double acting)
+      Set_Value : Real;                  // setpoint in engineering units (speed, position, ...)
+      // ---- Status: written by the device FB, read by the HMI ----
+      Sts_Cmd : Bool;                    // output currently commanded
+      Sts_Running : Bool;                // running / open confirmed
+      Sts_Stopped : Bool;                // stopped / closed confirmed
+      Sts_Fault : Bool;                  // latched fault
+      Sts_Warning : Bool;                // non-latching warning
+      Sts_Interlocked : Bool;            // blocked by process interlock
+      Sts_Enabled : Bool;                // permissive (safety + mode) present
+      Sts_ManualMode : Bool;             // device is under HMI control
+      Sts_Simulated : Bool;              // feedback simulated / bypassed
+      Sts_FaultCode : Int;               // 0 = none, see FAULT CODES below
+      Act_Value : Real;                  // actual value in engineering units
+   END_STRUCT;
+
+END_TYPE
+
+(*
+   UDT_DevIf - uniform HMI interface for every generated device.
+
+   One struct type for every device class keeps the HMI side simple: a single
+   faceplate binds to <InstanceDb>.<Device>.Hmi and works for motors, valves,
+   drives and analog channels alike. Fields that do not apply to a device class
+   are simply left at their default.
+
+   FAULT CODES
+     0  no fault
+     1  external fault / overload feedback
+     2  running-feedback timeout (commanded but no feedback)
+     3  feedback present while not commanded
+     4  travel timeout (valve failed to reach position)
+     5  both position feedbacks active (contradictory)
+     6  signal out of range / wire break (analog)
+*)

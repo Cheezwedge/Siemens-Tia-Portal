@@ -1,0 +1,114 @@
+FUNCTION_BLOCK "FB_ModeManager"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      SafetyOk : Bool;                   // aggregated safety status: TRUE = safe to move
+      DevicesHealthy : Bool := TRUE;     // FALSE while any device reports a latched fault
+      ReqManual : Bool;                  // momentary mode request (HMI)
+      ReqAuto : Bool;                    // momentary mode request (HMI)
+      StartCmd : Bool;                   // momentary start (HMI or hardwired)
+      StopCmd : Bool;                    // momentary stop (HMI): ends the cycle, no latch
+      StopOk : Bool := TRUE;             // NC stop circuit: TRUE = stop NOT pressed
+      ResetCmd : Bool;                   // momentary fault acknowledge
+      CycleComplete : Bool;              // sequence reached a safe stopping point
+   END_VAR
+
+   VAR_OUTPUT
+      Enable : Bool;                     // device permissive - gate every actuator with this
+      ManualMode : Bool;
+      AutoMode : Bool;
+      AutoRun : Bool;                    // TRUE while the sequence is allowed to advance
+      GroupReset : Bool;                 // one-shot reset pulse to all devices
+      State : Int;                       // see STATES below
+   END_VAR
+
+   VAR
+      SelAuto : Bool;                    // latched mode selection
+      StopLatch : Bool;
+      ResetTrig : R_TRIG;
+   END_VAR
+
+BEGIN
+    // ------------------------------------------------------------------
+    // 1. Mode selection - never change mode while the sequence is running
+    // ------------------------------------------------------------------
+    IF #ReqManual AND NOT #AutoRun THEN
+        #SelAuto := FALSE;
+    END_IF;
+    IF #ReqAuto AND NOT #AutoRun THEN
+        #SelAuto := TRUE;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 2. Stop handling. The stop circuit latches; a start is required to clear it.
+    // ------------------------------------------------------------------
+    IF NOT #StopOk OR NOT #SafetyOk THEN
+        #StopLatch := TRUE;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 3. Reset - one PLC cycle wide, so device FBs see a clean edge
+    // ------------------------------------------------------------------
+    #ResetTrig(CLK := #ResetCmd);
+    #GroupReset := #ResetTrig.Q;
+
+    IF #GroupReset AND #StopOk AND #SafetyOk THEN
+        #StopLatch := FALSE;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 4. Auto run control
+    // ------------------------------------------------------------------
+    IF #StartCmd AND #SelAuto AND #SafetyOk AND #StopOk
+       AND #DevicesHealthy AND NOT #StopLatch THEN
+        #AutoRun := TRUE;
+    END_IF;
+
+    // The hardwired stop circuit latches; the HMI stop button only ends the cycle.
+    IF NOT #SafetyOk OR NOT #StopOk OR NOT #DevicesHealthy
+       OR NOT #SelAuto OR #StopLatch OR #CycleComplete OR #StopCmd THEN
+        #AutoRun := FALSE;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 5. Outputs
+    // ------------------------------------------------------------------
+    #AutoMode := #SelAuto;
+    #ManualMode := NOT #SelAuto;
+
+    // Actuators are enabled whenever the machine is safe. Manual mode still
+    // needs Enable - the operator drives devices from the HMI faceplates.
+    #Enable := #SafetyOk AND NOT #StopLatch;
+
+    // ------------------------------------------------------------------
+    // 6. State for the HMI
+    // ------------------------------------------------------------------
+    IF NOT #SafetyOk THEN
+        #State := 0;                                   // SAFETY STOP
+    ELSIF NOT #DevicesHealthy THEN
+        #State := 1;                                   // FAULT
+    ELSIF #StopLatch THEN
+        #State := 2;                                   // STOPPED - reset required
+    ELSIF #AutoRun THEN
+        #State := 5;                                   // AUTO RUNNING
+    ELSIF #SelAuto THEN
+        #State := 4;                                   // AUTO READY
+    ELSE
+        #State := 3;                                   // MANUAL
+    END_IF;
+END_FUNCTION_BLOCK
+
+(*
+   STATES
+     0  Safety stop      - safety circuit open, nothing may move
+     1  Fault            - at least one device has a latched fault
+     2  Stopped          - stop circuit was opened, reset required
+     3  Manual           - operator drives devices from the HMI
+     4  Auto ready       - auto selected, waiting for start
+     5  Auto running     - sequence is allowed to advance
+
+   SafetyOk is a STATUS input, not a safety function. It is fed from the safety
+   relay's auxiliary contact or from an F-CPU's safety program. Standard logic in
+   this FB must never be the sole means of achieving a required safety function -
+   see docs/07-safety-and-gates.md.
+*)

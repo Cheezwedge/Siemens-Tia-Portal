@@ -1,0 +1,148 @@
+FUNCTION_BLOCK "FB_MotorRev"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Enable : Bool;
+      InterlockFwd : Bool := TRUE;
+      InterlockRev : Bool := TRUE;
+      AutoFwd : Bool;
+      AutoRev : Bool;
+      ManualMode : Bool;
+      GroupReset : Bool;
+      RunningFb : Bool;
+      FaultFb : Bool;
+      UseRunningFb : Bool := TRUE;
+      UseFaultFb : Bool := TRUE;
+      FbTimeout : Time := T#3S;
+      ChangeOverTime : Time := T#500MS;  // dead time between the two directions
+   END_VAR
+
+   VAR_OUTPUT
+      FwdOut : Bool;
+      RevOut : Bool;
+      Running : Bool;
+      Fault : Bool;
+      FaultCode : Int;
+   END_VAR
+
+   VAR
+      Hmi : "UDT_DevIf";
+      FbOnTimer : TON_TIME;
+      DeadTimer : TON_TIME;
+      CmdFwd : Bool;
+      CmdRev : Bool;
+      FaultLatch : Bool;
+      FaultCodeLatch : Int;
+      LastOut : Bool;                    // TRUE while either direction was on
+   END_VAR
+
+BEGIN
+    // ------------------------------------------------------------------
+    // 1. Faults
+    // ------------------------------------------------------------------
+    IF #UseFaultFb AND #FaultFb THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 1;
+    END_IF;
+
+    #FbOnTimer(IN := (#FwdOut OR #RevOut) AND #UseRunningFb AND NOT #RunningFb,
+               PT := #FbTimeout);
+    IF #FbOnTimer.Q THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 2;
+    END_IF;
+
+    IF #GroupReset OR #Hmi.Cmd_Reset THEN
+        IF NOT (#UseFaultFb AND #FaultFb) THEN
+            #FaultLatch := FALSE;
+            #FaultCodeLatch := 0;
+        END_IF;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 2. Command source. Cmd_Start = forward, Cmd_Open = reverse on the HMI.
+    // ------------------------------------------------------------------
+    IF #ManualMode THEN
+        IF #Hmi.Cmd_Start THEN
+            #CmdFwd := TRUE;
+            #CmdRev := FALSE;
+        END_IF;
+        IF #Hmi.Cmd_Open THEN
+            #CmdRev := TRUE;
+            #CmdFwd := FALSE;
+        END_IF;
+        IF #Hmi.Cmd_Stop THEN
+            #CmdFwd := FALSE;
+            #CmdRev := FALSE;
+        END_IF;
+    ELSE
+        #CmdFwd := #AutoFwd AND NOT #AutoRev;
+        #CmdRev := #AutoRev AND NOT #AutoFwd;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 3. Permissives
+    // ------------------------------------------------------------------
+    IF NOT #Enable OR #FaultLatch THEN
+        #CmdFwd := FALSE;
+        #CmdRev := FALSE;
+    END_IF;
+    IF NOT #InterlockFwd THEN
+        #CmdFwd := FALSE;
+    END_IF;
+    IF NOT #InterlockRev THEN
+        #CmdRev := FALSE;
+    END_IF;
+
+    // Hard mutual exclusion - never energise both contactors.
+    IF #CmdFwd AND #CmdRev THEN
+        #CmdFwd := FALSE;
+        #CmdRev := FALSE;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 4. Change-over dead time: both off for ChangeOverTime before restart
+    // ------------------------------------------------------------------
+    #DeadTimer(IN := NOT #LastOut, PT := #ChangeOverTime);
+
+    IF #CmdFwd OR #CmdRev THEN
+        IF #LastOut OR #DeadTimer.Q THEN
+            #FwdOut := #CmdFwd;
+            #RevOut := #CmdRev;
+        ELSE
+            #FwdOut := FALSE;
+            #RevOut := FALSE;
+        END_IF;
+    ELSE
+        #FwdOut := FALSE;
+        #RevOut := FALSE;
+    END_IF;
+
+    #LastOut := #FwdOut OR #RevOut;
+
+    // ------------------------------------------------------------------
+    // 5. Status
+    // ------------------------------------------------------------------
+    IF #UseRunningFb THEN
+        #Running := #RunningFb;
+    ELSE
+        #Running := #FwdOut OR #RevOut;
+    END_IF;
+
+    #Fault := #FaultLatch;
+    #FaultCode := #FaultCodeLatch;
+
+    #Hmi.Sts_Cmd := #FwdOut OR #RevOut;
+    #Hmi.Sts_Running := #Running;
+    #Hmi.Sts_Stopped := NOT #Running;
+    #Hmi.Sts_Fault := #FaultLatch;
+    #Hmi.Sts_FaultCode := #FaultCodeLatch;
+    #Hmi.Sts_Interlocked := NOT #InterlockFwd OR NOT #InterlockRev;
+    #Hmi.Sts_Enabled := #Enable;
+    #Hmi.Sts_ManualMode := #ManualMode;
+
+    #Hmi.Cmd_Start := FALSE;
+    #Hmi.Cmd_Stop := FALSE;
+    #Hmi.Cmd_Open := FALSE;
+    #Hmi.Cmd_Reset := FALSE;
+END_FUNCTION_BLOCK

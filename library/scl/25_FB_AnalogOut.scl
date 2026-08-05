@@ -1,0 +1,56 @@
+FUNCTION_BLOCK "FB_AnalogOut"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Enable : Bool := TRUE;
+      AutoValue : Real;                  // auto-mode setpoint, engineering units
+      ManualMode : Bool;
+      EngMin : Real := 0.0;
+      EngMax : Real := 100.0;
+      RawMin : Real := 0.0;
+      RawMax : Real := 27648.0;
+      HoldOnDisable : Bool := FALSE;     // FALSE = fall back to RawMin when disabled
+   END_VAR
+
+   VAR_OUTPUT
+      Raw : Int;                         // to the analog output word
+      Value : Real;                      // active setpoint, engineering units
+   END_VAR
+
+   VAR
+      Hmi : "UDT_DevIf";
+      Span : Real;
+      RawReal : Real;
+   END_VAR
+
+BEGIN
+    IF #ManualMode THEN
+        #Value := #Hmi.Set_Value;
+    ELSE
+        #Value := #AutoValue;
+    END_IF;
+
+    IF #Value < #EngMin THEN
+        #Value := #EngMin;
+    END_IF;
+    IF #Value > #EngMax THEN
+        #Value := #EngMax;
+    END_IF;
+
+    #Span := #EngMax - #EngMin;
+    IF #Span = 0.0 THEN
+        #RawReal := #RawMin;
+    ELSE
+        #RawReal := #RawMin + (#Value - #EngMin) * (#RawMax - #RawMin) / #Span;
+    END_IF;
+
+    IF #Enable THEN
+        #Raw := REAL_TO_INT(#RawReal);
+    ELSIF NOT #HoldOnDisable THEN
+        #Raw := REAL_TO_INT(#RawMin);
+    END_IF;
+
+    #Hmi.Act_Value := #Value;
+    #Hmi.Sts_Enabled := #Enable;
+    #Hmi.Sts_ManualMode := #ManualMode;
+END_FUNCTION_BLOCK
