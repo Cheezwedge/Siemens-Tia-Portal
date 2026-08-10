@@ -19,6 +19,11 @@ packages/
 # Driver logs
 *.log
 
+# Siemens manuals and exports dropped here to be read by an AI session. Kept out of
+# git because they are Siemens' copyright, not ours - and pasting one into a chat
+# window costs more context than a whole working session.
+reference/
+
 # TIA Portal leftovers, in case a project is ever created inside the repo
 *.ap21
 *.al21

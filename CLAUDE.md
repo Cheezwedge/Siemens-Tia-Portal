@@ -14,6 +14,28 @@ The single sanctioned exception is the region between `>>> BEGIN AUTO SEQUENCE >
 and `<<< END AUTO SEQUENCE <<<` in the generated machine FB, which is where
 machine-specific sequence logic goes.
 
+## Reference manuals go in a file, never in the chat
+
+Siemens manuals are enormous. The Openness system manual is ~2.7 MB of text - roughly
+660k tokens, several times a context window. Pasting one into the conversation ends the
+session; it cannot be summarised out afterwards because it was never usable to begin with.
+
+So: drop the manual in `reference/` (gitignored - it is Siemens' copyright, not ours),
+then work it the way you would work a codebase.
+
+```bash
+grep -n "OpenWithUpgrade" reference/*.txt     # find the section
+# then Read with offset/limit - a few hundred lines, not the file
+```
+
+Build a section index once per manual (`reference/manual-index.md`, line numbers against
+the text) and grep that instead. Note the edition on the cover: the 11/2023 manual stops
+at V19 and knows nothing about the modular `net48` assemblies, so it does not override
+what [docs/04](docs/04-s7-1200-g2-and-v21.md) says about V21.
+
+Anything a manual actually settles belongs in `docs/`, in a sentence, with the reasoning.
+That is the memory that survives the session - the conversation is not.
+
 ## Commands
 
 ```bash
