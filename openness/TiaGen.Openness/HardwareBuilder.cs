@@ -58,15 +58,46 @@ namespace TiaGen.Openness
             return project;
         }
 
-        public Project OpenProject(TiaPortal portal, string path)
+        /// <summary>
+        /// Opens an existing project.
+        ///
+        /// Projects.Open refuses a project written by a different TIA version - the
+        /// manual's long-term-stability chapter recommends OpenWithUpgrade instead. That
+        /// upgrade is irreversible, though, so it stays behind --upgrade: the default is
+        /// a plain Open that fails with the command to run rather than silently migrating
+        /// somebody's project.
+        /// </summary>
+        public Project OpenProject(TiaPortal portal, string path, bool allowUpgrade = false)
         {
             var file = new FileInfo(path);
             if (!file.Exists)
                 throw new OpennessStepException("project file not found: " + file.FullName);
+
+            if (allowUpgrade)
+            {
+                Log.Info("opening with upgrade " + file.FullName);
+                var upgraded = portal.Projects.OpenWithUpgrade(file);
+                Log.Ok("project opened, upgraded to " + OpennessResolver.PortalVersion);
+                return upgraded;
+            }
+
             Log.Info("opening " + file.FullName);
-            var project = portal.Projects.Open(file);
-            Log.Ok("project opened");
-            return project;
+            try
+            {
+                var project = portal.Projects.Open(file);
+                Log.Ok("project opened");
+                return project;
+            }
+            catch (Exception ex)
+            {
+                // A version mismatch is the overwhelmingly likely cause and the only one
+                // with a fix the caller can act on, so name it without claiming certainty.
+                throw new OpennessStepException(
+                    $"could not open {file.FullName}: {ex.GetType().Name}: {ex.Message}\n" +
+                    "      If the project was written by a different TIA Portal version, " +
+                    $"this one ({OpennessResolver.PortalVersion}) will not open it as-is. " +
+                    "Back the project up, then re-run with --upgrade to upgrade it on open.");
+            }
         }
 
         // ------------------------------------------------------------------

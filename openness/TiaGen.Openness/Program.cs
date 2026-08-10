@@ -49,6 +49,8 @@ Options
   --stop-after <stage>   run the pipeline up to and including this stage
   --no-compile           skip the compile stage
   --no-save              leave the project unsaved (for experiments)
+  --upgrade              allow --project to be a project from an older TIA version,
+                         upgrading it on open. Irreversible: back the project up first
   --dry-run              print what would be done, touch nothing
   --log <file>           write a full log, including every attempted API call
   --verbose              also print the detail lines to the console
@@ -138,7 +140,7 @@ Exit codes: 0 success, 1 problems reported, 2 bad usage or environment.
             public string Verb, PlanPath, ProjectPath, OutDir, Formats, Mode,
                           AssemblyDirectory, StopAfter, LogFile;
             public HashSet<string> Skip = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            public bool DryRun, Verbose, NoCompile, NoSave;
+            public bool DryRun, Verbose, NoCompile, NoSave, Upgrade;
 
             public bool WithUi => !string.Equals(Mode, "nogui", StringComparison.OrdinalIgnoreCase);
 
@@ -184,6 +186,7 @@ Exit codes: 0 success, 1 problems reported, 2 bad usage or environment.
                         case "--verbose": options.Verbose = true; break;
                         case "--no-compile": options.NoCompile = true; break;
                         case "--no-save": options.NoSave = true; break;
+                        case "--upgrade": options.Upgrade = true; break;
                         case "-h":
                         case "--help": options.Verb = "help"; break;
                         default:

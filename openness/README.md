@@ -116,6 +116,7 @@ Useful flags:
 --stop-after build_subnet     run part of the pipeline
 --skip create_hmi_tags,compile
 --project C:\TIA\...\X.ap21   work on an existing project instead of creating one
+--upgrade                     let --project be a project from an older TIA version
 --no-compile   --no-save
 --verbose                     print the per-call detail lines
 --log apply.log               record every attempted API call

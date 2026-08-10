@@ -83,7 +83,7 @@ namespace TiaGen.Openness
             using (var portal = new TiaPortal(mode))
             {
                 var builder = new HardwareBuilder(plan ?? EmptyPlan(options.ProjectPath));
-                var project = builder.OpenProject(portal, options.ProjectPath);
+                var project = builder.OpenProject(portal, options.ProjectPath, options.Upgrade);
 
                 var results = new List<KeyValuePair<string, Verifier.Result>>();
                 foreach (var device in project.Devices)
@@ -123,7 +123,7 @@ namespace TiaGen.Openness
             using (var portal = new TiaPortal(mode))
             {
                 var builder = new HardwareBuilder(EmptyPlan(options.ProjectPath));
-                var project = builder.OpenProject(portal, options.ProjectPath);
+                var project = builder.OpenProject(portal, options.ProjectPath, options.Upgrade);
                 return Exporter.Run(project, options.OutDir, options.ParseFormats());
             }
         }
@@ -177,7 +177,8 @@ namespace TiaGen.Openness
                 {
                     state.Project = string.IsNullOrEmpty(state.Options.ProjectPath)
                         ? state.Hardware.CreateProject(state.Portal)
-                        : state.Hardware.OpenProject(state.Portal, state.Options.ProjectPath);
+                        : state.Hardware.OpenProject(state.Portal, state.Options.ProjectPath,
+                                                     state.Options.Upgrade);
                 },
 
                 ["create_plc"] = () =>

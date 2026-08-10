@@ -71,6 +71,11 @@ process. Use the UI while developing so you can watch what happens.
 Project project = portal.Projects.Create(new DirectoryInfo(@"C:\TIA\Projects"), "BottleLine");
 Project project = portal.Projects.Open(new FileInfo(@"C:\TIA\Projects\BottleLine\BottleLine.ap21"));
 
+// Open throws if the project was written by a different TIA version. The manual's
+// long-term-stability chapter says to prefer OpenWithUpgrade for exactly that reason -
+// but the upgrade is irreversible, so gate it on a flag rather than doing it by default.
+Project project = portal.Projects.OpenWithUpgrade(new FileInfo(path));
+
 project.Save();
 project.Close();
 
