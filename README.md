@@ -143,6 +143,7 @@ every device type**.
 | [07 Safety and gates](docs/07-safety-and-gates.md) | **Read before the first download** |
 | [08 Eigen / Copilot vs Claude](docs/08-eigen-copilot-vs-claude.md) | Siemens' AI agent for TIA Portal, what it does, and what Claude can do instead |
 | [09 TIA Add-Ins](docs/09-add-ins.md) | Putting Claude inside TIA Portal's own context menus |
+| [10 A standards system](docs/10-standards-system.md) | Making a house standard executable across a team: conformance checking, ladder, device lists, and where online monitoring actually has to live |
 | [openness/README.md](openness/README.md) | Building and running the driver |
 
 ---
