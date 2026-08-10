@@ -138,9 +138,11 @@ every device type**.
 | [02 Cookbook](docs/02-api-cookbook.md) | Copy-paste C# for every call you need |
 | [03 SCL, SimaticML, source documents](docs/03-simaticml-and-source-formats.md) | The four routes for getting code in, and which to use |
 | [04 S7-1200 G2 and V21](docs/04-s7-1200-g2-and-v21.md) | Order numbers, on-board I/O, V21 breaking changes |
-| [05 HMI and screens](docs/05-hmi-and-screens.md) | What is automatable, what is not, and how the work splits |
+| [05 HMI and screens](docs/05-hmi-and-screens.md) | Which screen objects the API can create, and which it genuinely cannot |
 | [06 AI workflow](docs/06-ai-workflow.md) | Driving this with Claude Code from a plain-language description |
 | [07 Safety and gates](docs/07-safety-and-gates.md) | **Read before the first download** |
+| [08 Eigen / Copilot vs Claude](docs/08-eigen-copilot-vs-claude.md) | Siemens' AI agent for TIA Portal, what it does, and what Claude can do instead |
+| [09 TIA Add-Ins](docs/09-add-ins.md) | Putting Claude inside TIA Portal's own context menus |
 | [openness/README.md](openness/README.md) | Building and running the driver |
 
 ---
@@ -176,12 +178,28 @@ Honest about what has been tested, because that matters more than looking finish
 |---|---|
 | **Generator** | Tested. 54 unit tests over addressing, naming, validation, SCL emission, tag XML well-formedness, and both example specs end to end. `python -m unittest discover -s generator/tests` |
 | **SCL library** | Written against S7-1200 SCL and reviewed, **not yet compiled in TIA Portal**. The first `apply` run is the real test; the compiler names any problem and the file it is in. |
-| **Openness driver** | Written against the documented V21 API; **not compiled or run against a real installation** - there is no TIA Portal in the environment this was built in. Every call is individually logged and non-fatal where it can be, so a version difference costs you one item and a clear message rather than the run. Expect to adjust one or two attribute names on first use; `GetAttributeInfos()` and the log tell you which. |
+| **Openness driver** | Written against the V21 manual (`21.00.00.00`, 03/2026); **not compiled or run against a real installation** - there is no TIA Portal in the environment this was built in. Every call is individually logged and non-fatal where it can be, so a version difference costs you one item and a clear message rather than the run. Expect to adjust one or two attribute names on first use. Two local resources settle those questions faster than any document: the **TIA Portal Openness Explorer** (Siemens entry 109760816), a live API browser for your own project, and the **Hardware Parameter List** in `...\PublicAPI\V21\HW Parameter description`. |
 | **Order numbers** | The CPU MLFB `6ES7214-1AH50-0XB0` matches Siemens' G2 documentation and distributor listings. **G2 module MLFBs are not shipped** - the example carries a deliberate placeholder the validator flags. Copy yours from the hardware catalog. |
 | **HMI stages** | The least certain area of the API. Tags, connection and screens are attempted with per-item logging; screen *content* is emitted as a plan rather than pretended to be automatic. [Detail](docs/05-hmi-and-screens.md). |
 
 The one step with a known manual fallback is importing OB1, and the driver prints the
 one line to paste if it fails.
+
+### Known gaps, ranked by value
+
+Confirmed reachable through Openness (Siemens' own Eigen agent ships all of them), and
+not implemented here:
+
+1. **Hardware catalog queries** - V21 can list the sub-modules compatible with a given
+   parent module. This would retire the `REPLACE-WITH-CATALOG-MLFB` placeholder entirely.
+   Smallest change, biggest win.
+2. **CAx / AutomationML import** - read the `.aml` your electrical designer exports and
+   emit a machine spec from it.
+3. **Executable screen content** - most screen objects are creatable, so `screens.json`
+   could be applied rather than just read. Alarm and trend controls are genuinely
+   excluded from the API, so those two screens stay manual.
+4. **Project text translation**, drives/technology objects, cross-references,
+   `ExclusiveAccess` batching for speed.
 
 ---
 
@@ -196,6 +214,7 @@ library/scl/                   the reusable device FBs - reviewable SCL, not tem
 generator/tiagen/              spec model, validation, emitters, CLI
 generator/tests/               54 tests
 openness/TiaGen.Openness/      the .NET driver: doctor, apply, verify, export
+openness/TiaGen.AddIn/         a TIA Portal Add-In: "Claude" in the context menu
 docs/                          how Openness works, and how this uses it
 .claude/skills/tia-machine/    the Claude Code skill
 CLAUDE.md                      always-on rules for AI sessions in this repo

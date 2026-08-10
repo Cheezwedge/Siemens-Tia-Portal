@@ -8,24 +8,63 @@ possible.
 
 ## 1. What Openness can and cannot do for an HMI
 
+> **Corrected.** An earlier version of this document said placing objects inside a screen
+> "is not uniformly supported". That was too pessimistic. The Openness manual carries an
+> explicit **object list** stating support per object type and panel family, and most
+> screen objects *are* supported. Siemens' own Eigen agent adds screen items, writes
+> dynamization JavaScript and instantiates faceplates - all through this API.
+
 | Object | Automatable | How |
 |---|---|---|
 | HMI tag tables and folders | yes | `hmiTarget.TagFolder.TagTables.Create(...)` |
-| HMI tags, bound to PLC tags | yes | `table.Tags.Create(name)` + `Connection` / `PlcTag` |
-| PLC ↔ HMI connection | usually | `hmiTarget.Connections.Create(...)`, then `Partner` |
-| Screens (the objects themselves) | yes | `hmiTarget.ScreenFolder.Screens.Create(name)` |
-| Screen templates, popups | yes | corresponding folders |
-| Text lists, graphics lists | yes | XML import/export |
-| Alarms | via import | XML/config import |
-| **Individual objects on a screen** | **not uniformly** | see below |
+| HMI tags, bound to PLC tags | yes | `table.Tags.Create(name)` + connection / PLC tag |
+| PLC ↔ HMI connection | yes | `hmiTarget.Connections` |
+| Screens, templates, global screen | yes | `hmiTarget.ScreenFolder.Screens.Create(name)` |
+| Pop-up and slide-in screens, permanent area | yes, **not on Basic panels** | |
+| **Most screen objects** | **yes** | see the support table below |
+| Dynamization - display, visibility, movements | yes | (operability: not on Basic) |
+| Text lists, graphic lists | yes | API and XML import/export |
+| VB scripts | yes, **not on Basic panels** | |
+| Cycles, function lists, project graphics | yes | |
+| Faceplate instances | yes, **not on Basic panels** | |
+| **WinCC Runtime Professional** | **no** | not supported by Openness at all |
+| **Device proxy files** | **no** | |
 
-That last row is the whole difficulty. **Placing buttons, indicators and faceplates
-inside a screen through the API is not uniformly supported** across panel families
-and TIA versions. Screen *content* is exchanged through import/export instead:
-SimaticML XML for classic panels, and JSON for WinCC Unified screens, preserving
-properties, texts and dynamizations.
+### Which screen objects are supported
 
-So there is no honest way to say "the API creates your screens". What there is:
+For classic panels the manual is precise. Supported on Comfort Panels (and generally on
+Mobile / RT Advanced): line, polyline, polygon, ellipse, circle, rectangle, text field,
+graphic view, I/O field, date/time field, graphic I/O field, button, switch, symbolic I/O
+field, bar, symbol library, slider, gauge, clock, function keys, **faceplate instances**,
+user view, criteria analysis view, ProDiag overview, GRAPH overview, PLC code view.
+
+**Not** supported, which matters for the screens this generator plans: **alarm view,
+alarm window, alarm indicator, f(t) and f(x) trend views, table view, screen window,
+recipe view, system diagnostic view/window, status/force**, HTML browser, media player,
+check boxes, option buttons, combo/list boxes, connectors and pipes.
+
+Basic Panels are a reduced subset: no polyline/polygon, no slider, gauge, clock or symbol
+library, no faceplates, no VB scripts, no internal tags.
+
+For **WinCC Unified** the picture is better than the classic table and moving fast. V21
+alone added HMI graphic list management, screen **layout field export/import**, and new
+controls - Alarm Line, Process Diagnostic Criteria Analysis, Process Diagnosis Graph
+Overview, Process Diagnosis Overview, Process Diagnosis PLC Code Viewer - plus an Alarm
+Indicator widget.
+
+### What this means for the generated plan
+
+The consequence is not "screens cannot be automated". It is:
+
+- **Faceplate grids and status tiles are automatable** - buttons, I/O fields, bars,
+  indicators and faceplate instances are all in the supported set.
+- **The alarm and trend screens are not**, at least on classic panels: the alarm and
+  trend *controls* are excluded from the API. Those two screens stay manual regardless of
+  how much code you write.
+
+So `screens.json` should be read as an executable plan for the device screens and an
+advisory one for the alarm and trend screens. Turning the first part into API calls is a
+worthwhile piece of work that this repo has not done yet.
 
 ---
 
@@ -43,9 +82,12 @@ out/*/hmi/alarms.json   → every alarm, with class, priority and trigger tag
 out/*/hmi/hmi_tags.csv  → the same tags as a sheet
 ```
 
-That is a deliberate line: the parts that are reliably automatable are automated, and
-the part that is not arrives as a specification precise enough that filling it in is
-mechanical rather than creative.
+To be clear about why: this split reflects **what this repo has implemented**, not the
+limit of the API. Screen items are largely creatable (§1). Emitting a plan was the
+conservative first step because it is useful even when the API call for a given object
+turns out to be unavailable on your panel family - and because a plan can be reviewed
+before anything is written. Making the device screens executable is the obvious next
+piece of work.
 
 ### The tags are the valuable half
 

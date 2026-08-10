@@ -5,45 +5,59 @@
 
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{7C9F2D41-2C3B-4E7A-9E51-1A6B0D6F5C10}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>TiaGen.Openness</RootNamespace>
     <AssemblyName>TiaGen.Openness</AssemblyName>
-    <!-- Openness is only published for .NET Framework. V21 requires 4.8. -->
+    <!-- Openness is published for .NET Framework only. V21 requires 4.8. -->
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <!-- The Siemens assemblies are x64 only; AnyCPU fails at runtime. -->
-    <PlatformTarget>x64</PlatformTarget>
+    <!--
+      Openness talks to TIA Portal out of process over .NET Remoting (IpcChannel), so
+      the client is NOT required to match TIA's bitness. The V21 manual lists 32-bit,
+      64-bit and AnyCPU user applications as supported against 64-bit TIA Portal on a
+      64-bit OS. AnyCPU is the least surprising default.
+    -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <LangVersion>7.3</LangVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <!--
-    Where the Openness assemblies live. Override on the command line if your TIA
-    Portal is installed elsewhere:
+    Where the Openness assemblies live.
 
-      msbuild TiaGen.Openness.csproj /p:TiaOpennessDir="D:\Siemens\...\PublicAPI\V21"
+    V21 restructured this: the libraries are modular and sit in a target-framework
+    subfolder, and the base assembly is Siemens.Engineering.Base.dll - there is no
+    single Siemens.Engineering.dll any more.
 
-    The reference is compile-time only. At runtime OpennessResolver finds the
-    matching assembly through the registry, which is what makes the same binary
-    work on a machine with a different TIA build.
+        ...\Portal V21\PublicAPI\V21\net48\Siemens.Engineering.Base.dll
+        ...\Portal V21\PublicAPI\V21\net48\Siemens.Engineering.Step7.dll
+        ...\Portal V21\PublicAPI\V21\net48\Siemens.Engineering.Hmi.dll
+
+    Override on the command line if TIA is installed elsewhere:
+
+      msbuild TiaGen.Openness.csproj /p:TiaOpennessDir="D:\...\PublicAPI\V21\net48"
+
+    References are compile-time only. At runtime OpennessResolver finds the matching
+    assemblies through the registry, which is what lets one binary run on a machine
+    with a different TIA build.
   -->
   <PropertyGroup>
-    <TiaOpennessDir Condition=" '$(TiaOpennessDir)' == '' ">C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21</TiaOpennessDir>
+    <TiaOpennessDir Condition=" '$(TiaOpennessDir)' == '' ">C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\net48</TiaOpennessDir>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\x64\Debug\</OutputPath>
+    <OutputPath>bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>bin\x64\Release\</OutputPath>
+    <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
   </PropertyGroup>
 
@@ -54,29 +68,53 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
 
-    <!-- The only third-party dependency. If the engineering PC has no NuGet
-         access, drop Newtonsoft.Json.dll next to the exe and reference it by
-         HintPath instead. -->
+    <!-- The only third-party dependency. If the engineering PC has no NuGet access,
+         drop Newtonsoft.Json.dll next to the exe and reference it by HintPath. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 
-    <Reference Include="Siemens.Engineering">
-      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.dll</HintPath>
-      <!-- Never copy the Siemens assemblies next to the exe: they are resolved
-           from the installation at runtime and must not be redistributed. -->
+    <!--
+      Private=false on every Siemens reference: the manual states that "Copy Local:
+      True" is NOT supported. The assemblies must be loaded from the installation, not
+      from our output directory, and they are not ours to redistribute.
+    -->
+
+    <!-- Base: Siemens.Engineering, .Compiler, .HW, .HW.Features -->
+    <Reference Include="Siemens.Engineering.Base">
+      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Base.dll</HintPath>
       <Private>false</Private>
       <SpecificVersion>false</SpecificVersion>
     </Reference>
+
+    <!-- STEP 7: Siemens.Engineering.SW and everything below it -->
+    <Reference Include="Siemens.Engineering.Step7"
+              Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Step7.dll')">
+      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Step7.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+
+    <!-- HMI: Siemens.Engineering.Hmi.* -->
     <Reference Include="Siemens.Engineering.Hmi"
               Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Hmi.dll')">
       <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Hmi.dll</HintPath>
       <Private>false</Private>
       <SpecificVersion>false</SpecificVersion>
     </Reference>
+
+    <!--
+      Pre-V21 fallback: before the modular split everything lived in one assembly.
+      Referenced only when the V21 base assembly is absent, so a V20 install still
+      builds.
+    -->
+    <Reference Include="Siemens.Engineering"
+              Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.Base.dll') And Exists('$(TiaOpennessDir)\Siemens.Engineering.dll')">
+      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
   </ItemGroup>
 
-  <!-- Siemens.Engineering.Hmi is a separate assembly in some installations and
-       merged into Siemens.Engineering in others. HAS_HMI_ASSEMBLY lets the HMI
-       code compile either way. -->
+  <!-- The HMI code is compiled only when the HMI assembly is available. -->
   <PropertyGroup Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Hmi.dll')">
     <DefineConstants>$(DefineConstants);HAS_HMI_ASSEMBLY</DefineConstants>
   </PropertyGroup>
@@ -96,8 +134,8 @@
   </ItemGroup>
 
   <Target Name="WarnMissingOpenness" BeforeTargets="ResolveAssemblyReferences"
-          Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.dll')">
-    <Warning Text="Siemens.Engineering.dll was not found in '$(TiaOpennessDir)'. Install the TIA Portal Openness component, or pass /p:TiaOpennessDir=... pointing at the PublicAPI folder." />
+          Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.Base.dll') And !Exists('$(TiaOpennessDir)\Siemens.Engineering.dll')">
+    <Warning Text="No Openness assemblies found in '$(TiaOpennessDir)'. On V21 they are in a target-framework subfolder, e.g. ...\Portal V21\PublicAPI\V21\net48. Pass /p:TiaOpennessDir=... to override. From V21 Openness is an inherent part of TIA Portal, so a missing folder usually means TIA Portal itself is not installed." />
   </Target>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -8,14 +8,19 @@ picks the one it does.
 
 ## The decision, up front
 
-| | External SCL source | SimaticML XML | Source documents (V20+) | Direct API |
+| | External SCL source | SimaticML XML | SIMATIC SD documents (V20+) | Direct API |
 |---|---|---|---|---|
 | Format | plain `.scl` text | `.xml` | `.s7dcl` + `.s7res` | none |
 | Schema to track | **none** | yes, per TIA version | yes, but text | none |
 | Errors surface as | **compiler errors** | import failure | import failure | exception |
-| LAD/FBD graphics | no | yes | yes | no |
-| Good for | **generating logic** | round-tripping, graphics | **version control** | tags, DBs, groups |
+| LAD/FBD graphics | no | yes | **yes, as text (V21)** | no |
+| Good for | **generating logic** | round-tripping, bulk edits | **version control, LAD** | tags, DBs, groups |
 | Risk when generating | low | high | medium | low |
+
+> **V21 changed the SD row.** The text-based exchange format was extended to cover
+> **LAD, Safety-LAD, FBD, Safety-FBD, SCL, blocks with mixed languages, data blocks and
+> PLC data types**. Text-based ladder generation is therefore a real option now, where
+> before it meant hand-writing `FlgNet` XML. See §3.
 
 **This repo generates SCL and creates tags through the API.** Everything else is
 provided for the jobs it is genuinely better at.
@@ -187,7 +192,14 @@ that tracks the TIA release:
 ```
 
 Those `vN` suffixes change between versions. A generator that hard-codes them
-silently stops working after an upgrade. Which brings us to the rule:
+silently stops working after an upgrade.
+
+**Version compatibility in V21**, from the manual: the V21 libraries **write** engineering
+version V21 files and **read** V18, V19, V20 and V21. A V17-or-older export will not
+import. V21 also "improved formatting of SimaticML", so expect exports to differ
+cosmetically from earlier versions even for unchanged blocks - relevant if you diff them.
+
+Which brings us to the rule:
 
 ### Adopting your own export as the template
 
@@ -210,18 +222,28 @@ path.
 
 ---
 
-## 3. Source documents - the version-control route
+## 3. SIMATIC SD documents - version control, and LAD
 
-**New in V20, and the headline Openness feature of V21.** SIMATIC Source Documents
-are a text representation of blocks:
+**New in V20, extended in V21, and the headline Openness feature of the release.**
+SIMATIC Source Documents are a text representation of blocks:
 
 - **`.s7dcl`** - declarations and code
 - **`.s7res`** - comments, titles and translations
 
-They cover LAD, FBD, SCL, data blocks, PLC data types and mixed-language blocks -
-so, unlike plain SCL export, a graphical block survives the round trip. Being text,
-they diff and merge, which is what finally makes a TIA project a reasonable thing to
-keep in git.
+V21 extended the format to cover **LAD, Safety-LAD, FBD, Safety-FBD, SCL, blocks with
+mixed languages, data blocks and PLC data types**. Two things follow:
+
+1. **A graphical block survives the round trip**, unlike plain SCL export.
+2. **Generating ladder is now tractable.** If your house standard is LAD, emitting
+   `.s7dcl` is a far better bet than hand-writing `FlgNet` SimaticML with its versioned
+   namespaces. This toolchain still generates SCL - but "LAD is impractical to generate"
+   stopped being true in V21, and if ladder is a hard requirement for you, this is the
+   route to investigate.
+
+Being text, they diff and merge, which is what finally makes a TIA project a reasonable
+thing to keep in git. The Version Control Interface understands the format too: V21 adds
+VCI support for F-compliant PLC data types, FBD/LAD/SCL and mixed blocks, and data blocks
+in SIMATIC SD format.
 
 ```csharp
 block.ExportAsDocuments(new DirectoryInfo(dir), block.Name);

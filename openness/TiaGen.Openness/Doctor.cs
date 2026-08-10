@@ -7,9 +7,10 @@ using System.Security.Principal;
 namespace TiaGen.Openness
 {
     /// <summary>
-    /// Environment checks. Run this first on a new engineering PC: it catches the
-    /// three things that account for nearly every "Openness does not work" report -
-    /// wrong bitness, missing group membership, and unregistered assemblies.
+    /// Environment checks. Run this first on a new engineering PC: it catches the things
+    /// that account for nearly every "Openness does not work" report - group membership,
+    /// the Openness firewall, and (since V21) looking for the assemblies in the wrong
+    /// place.
     /// </summary>
     internal static class Doctor
     {
@@ -21,14 +22,18 @@ namespace TiaGen.Openness
 
             Log.Stage("Process");
             Log.Info($"64-bit process:      {Environment.Is64BitProcess}");
-            if (!Environment.Is64BitProcess)
-            {
-                Log.Error("The Siemens assemblies are x64 only. Build with PlatformTarget=x64.");
-                failures++;
-            }
             Log.Info($"64-bit OS:           {Environment.Is64BitOperatingSystem}");
             Log.Info($"CLR version:         {Environment.Version}");
             Log.Info($"User:                {WindowsIdentity.GetCurrent().Name}");
+            if (!Environment.Is64BitOperatingSystem)
+            {
+                Log.Error("TIA Portal requires a 64-bit Windows installation.");
+                failures++;
+            }
+            // Bitness of the CLIENT does not have to match TIA Portal: Openness talks to
+            // it out of process over .NET Remoting, and the manual lists 32-bit, 64-bit
+            // and AnyCPU clients as supported.
+            Log.Skip("client bitness is not required to match TIA Portal (out-of-process API)");
 
             Log.Stage("Openness user group");
             var membership = CheckGroupMembership();
@@ -38,10 +43,12 @@ namespace TiaGen.Openness
             }
             else if (membership == false)
             {
-                Log.Error($"the current user is NOT a member of \"{OpennessGroup}\". " +
-                          "Openness will refuse to connect. Add the user (as an administrator):\n" +
+                Log.Error($"the current user is NOT a member of \"{OpennessGroup}\". TIA Portal " +
+                          "throws EngineeringSecurityException on connect. Add the user (as an " +
+                          "administrator):\n" +
                           $"      net localgroup \"{OpennessGroup}\" \"%USERDOMAIN%\\%USERNAME%\" /add\n" +
-                          "      then sign out and back in.");
+                          "      then sign out and back in - group membership is baked into the " +
+                          "logon token.");
                 failures++;
             }
             else
@@ -50,24 +57,36 @@ namespace TiaGen.Openness
                          $"'net localgroup \"{OpennessGroup}\"'");
             }
 
+            Log.Stage("Openness firewall (AllowList)");
+            var allowed = OpennessResolver.IsCurrentProcessAllowListed();
+            if (allowed == true)
+            {
+                Log.Ok("this executable appears on the Openness AllowList");
+            }
+            else if (allowed == false)
+            {
+                Log.Info("this executable is not on the AllowList yet. That is expected before " +
+                         "the first run: TIA Portal raises a confirmation dialog on the first " +
+                         "connection from a new executable, and accepting it adds the entry.");
+                Log.Info("A human has to accept that dialog. Do not try to automate past it.");
+            }
+            else
+            {
+                Log.Skip("could not read the AllowList");
+            }
+
             Log.Stage("Openness assemblies");
             if (!string.IsNullOrWhiteSpace(assemblyDirectory))
             {
                 Log.Info("using explicit directory: " + assemblyDirectory);
-                var dll = Path.Combine(assemblyDirectory, "Siemens.Engineering.dll");
-                if (File.Exists(dll)) Log.Ok(dll);
-                else
-                {
-                    Log.Error("Siemens.Engineering.dll not found at " + dll);
-                    failures++;
-                }
+                failures += ReportDirectory(assemblyDirectory);
             }
             else
             {
-                Dictionary<string, string> found = null;
+                List<OpennessResolver.Installation> installations = null;
                 try
                 {
-                    found = OpennessResolver.FromRegistry(21);
+                    installations = OpennessResolver.DiscoverAll(21);
                 }
                 catch (Exception ex)
                 {
@@ -75,25 +94,26 @@ namespace TiaGen.Openness
                     failures++;
                 }
 
-                if (found == null || found.Count == 0)
+                if (installations == null || installations.Count == 0)
                 {
                     Log.Error(
-                        @"no Openness assemblies registered under HKLM\SOFTWARE\Siemens\Automation\Openness. " +
-                        "Install the 'TIA Portal Openness' component from the TIA Portal setup, " +
-                        "or pass --assembly-dir pointing at the PublicAPI folder.");
+                        @"no Openness installation registered under HKLM\SOFTWARE\Siemens\Automation\Openness. " +
+                        "From V21, Openness is an inherent feature of TIA Portal rather than an " +
+                        "optional setup component, so this normally means TIA Portal is not " +
+                        "installed here. On V20 and earlier it could also mean the 'TIA Portal " +
+                        "Openness' option was not selected during setup. You can also pass " +
+                        "--assembly-dir explicitly.");
                     failures++;
                 }
                 else
                 {
-                    foreach (var entry in found.OrderBy(e => e.Key))
+                    foreach (var installation in installations)
                     {
-                        Log.Ok($"{entry.Key} -> {entry.Value}");
+                        Log.Info($"{installation}  ->  {installation.Directory}");
                     }
-                    if (!found.ContainsKey("Siemens.Engineering.Hmi"))
-                    {
-                        Log.Skip("Siemens.Engineering.Hmi not registered separately " +
-                                 "(fine when it is merged into Siemens.Engineering)");
-                    }
+                    var best = installations[0];
+                    Log.Ok($"selected {best}");
+                    failures += ReportDirectory(best.Directory);
                 }
             }
 
@@ -104,8 +124,55 @@ namespace TiaGen.Openness
         }
 
         /// <summary>
-        /// True / false / null when the answer cannot be determined (for example on
-        /// a domain-joined machine where SID translation fails).
+        /// Lists the modular assemblies present. Which ones exist depends on the TIA
+        /// products installed - Step7 for PLC work, Hmi for panels, and so on.
+        /// </summary>
+        private static int ReportDirectory(string directory)
+        {
+            if (!Directory.Exists(directory))
+            {
+                Log.Error("directory does not exist: " + directory);
+                return 1;
+            }
+
+            var assemblies = Directory.GetFiles(directory, "Siemens.Engineering*.dll")
+                                      .Select(Path.GetFileNameWithoutExtension)
+                                      .OrderBy(name => name)
+                                      .ToList();
+            if (assemblies.Count == 0)
+            {
+                Log.Error("no Siemens.Engineering* assemblies in " + directory +
+                          ". On V21 they live in a target-framework subfolder such as " +
+                          @"...\PublicAPI\V21\net48 - check you are not pointing at the parent.");
+                return 1;
+            }
+
+            foreach (var name in assemblies) Log.Ok(name);
+
+            var failures = 0;
+            var hasBase = assemblies.Contains("Siemens.Engineering.Base");
+            var hasLegacy = assemblies.Contains("Siemens.Engineering");
+            if (!hasBase && !hasLegacy)
+            {
+                Log.Error("neither Siemens.Engineering.Base (V21+) nor Siemens.Engineering " +
+                          "(V20 and earlier) is present; nothing can be resolved.");
+                failures++;
+            }
+            if (hasBase && !assemblies.Contains("Siemens.Engineering.Step7"))
+            {
+                Log.Warn("Siemens.Engineering.Step7 is missing - PLC software access needs it. " +
+                         "Install STEP 7 Professional (or Basic) on this machine.");
+            }
+            if (hasBase && !assemblies.Contains("Siemens.Engineering.Hmi"))
+            {
+                Log.Skip("Siemens.Engineering.Hmi is absent - the HMI stages will be unavailable");
+            }
+            return failures;
+        }
+
+        /// <summary>
+        /// True / false / null when the answer cannot be determined (for example on a
+        /// domain-joined machine where SID translation fails).
         /// </summary>
         public static bool? CheckGroupMembership()
         {

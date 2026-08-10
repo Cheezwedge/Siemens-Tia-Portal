@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"
+          Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{2B5E77A0-9C41-4C2E-8A7B-3D6E0F914C22}</ProjectGuid>
+    <!-- An Add-In is a class library: TIA Portal loads it, it has no entry point. -->
+    <OutputType>Library</OutputType>
+    <RootNamespace>TiaGen.AddIn</RootNamespace>
+    <AssemblyName>TiaGen.AddIn</AssemblyName>
+    <!-- V17 and later require .NET Framework 4.8 (V16 used 4.6.2). -->
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <LangVersion>7.3</LangVersion>
+  </PropertyGroup>
+
+  <!--
+    STRONGLY RECOMMENDED: instead of maintaining this file, install the Siemens NuGet
+    package into this project and let it manage everything:
+
+        Siemens.Collaboration.Net.TiaPortal.AddIn.Build     (use the 21.* line for V21)
+
+    It references the Add-In assembly from your installation, enforces the right target
+    framework, writes the publisher configuration, converts *.dll -> *.addin on build,
+    deploys it into the TIA Portal AddIns folder, and sets up the TIA Add-In Tester for
+    debugging. It also generates template provider and context-menu classes that are
+    correct for your version - diff them against the ones here.
+
+    This hand-written project file exists so the sources are readable without NuGet.
+  -->
+  <PropertyGroup>
+    <TiaOpennessDir Condition=" '$(TiaOpennessDir)' == '' ">C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\net48</TiaOpennessDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Windows.Forms" />
+
+    <!-- Copy Local must stay false on every Siemens reference. -->
+    <Reference Include="Siemens.Engineering.AddIn">
+      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.AddIn.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="Siemens.Engineering.Base">
+      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Base.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="Siemens.Engineering.Step7">
+      <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Step7.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="AddInProvider.cs" />
+    <Compile Include="ClaudeBridgeAddIn.cs" />
+  </ItemGroup>
+
+  <Target Name="WarnMissingAddInAssembly" BeforeTargets="ResolveAssemblyReferences"
+          Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.AddIn.dll')">
+    <Warning Text="Siemens.Engineering.AddIn.dll not found in '$(TiaOpennessDir)'. On V21 the assemblies are in a target-framework subfolder, e.g. ...\Portal V21\PublicAPI\V21\net48. Prefer installing the Siemens.Collaboration.Net.TiaPortal.AddIn.Build NuGet package, which locates them for you." />
+  </Target>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

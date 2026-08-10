@@ -8,6 +8,15 @@ namespace TiaGen.Openness
 {
     internal static class Program
     {
+        static Program()
+        {
+            // The assembly resolver must exist before the JIT has to resolve any Openness
+            // type. A static constructor on the entry-point class is the earliest hook
+            // available - registering "at the top of Main" is too late if Main's own body
+            // mentions an Openness type. The V21 manual specifies exactly this pattern.
+            OpennessResolver.Touch();
+        }
+
         private const string Usage = @"
 TiaGen.Openness - drives TIA Portal V21 from a generated build plan.
 
@@ -33,7 +42,9 @@ Options
   --out <dir>            output directory (export)
   --formats <list>       xml, documents, scl or all (default: all)
   --mode ui|nogui        run TIA Portal with or without its user interface (default: ui)
-  --assembly-dir <dir>   PublicAPI folder holding Siemens.Engineering.dll
+  --assembly-dir <dir>   folder holding Siemens.Engineering.Base.dll. On V21 that is the
+                         target-framework subfolder, e.g.
+                         ""C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\net48""
   --skip <stages>        comma-separated pipeline stages to skip
   --stop-after <stage>   run the pipeline up to and including this stage
   --no-compile           skip the compile stage
@@ -81,7 +92,10 @@ Exit codes: 0 success, 1 problems reported, 2 bad usage or environment.
                     return 2;
                 }
 
-                OpennessResolver.Install(options.AssemblyDirectory);
+                OpennessResolver.Configure(options.AssemblyDirectory);
+                Log.Detail($"Openness: {OpennessResolver.PortalVersion} " +
+                           $"({OpennessResolver.EngineeringVersion}, " +
+                           $"{OpennessResolver.TargetFramework}) from {OpennessResolver.Directory_}");
 
                 switch (options.Verb)
                 {

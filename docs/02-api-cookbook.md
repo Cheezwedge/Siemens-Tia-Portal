@@ -4,20 +4,41 @@ Copy-paste recipes for the calls you actually need. All V21, C#, .NET Framework 
 x64. The primer explains the model these snippets assume:
 [01-openness-primer.md](01-openness-primer.md).
 
+**Assembly references (V21).** Openness is modular from V21: reference
+`Siemens.Engineering.Base.dll` plus one assembly per product area, all from the
+target-framework subfolder `...\PublicAPI\V21\net48\`. Set **Copy Local: False** on every
+one - the manual states that copying them is not supported.
+
+| Assembly | Provides |
+|---|---|
+| `Siemens.Engineering.Base.dll` | `Siemens.Engineering`, `.Compiler`, `.HW`, `.HW.Features` |
+| `Siemens.Engineering.Step7.dll` | `Siemens.Engineering.SW` and everything below it |
+| `Siemens.Engineering.Hmi.dll` | `Siemens.Engineering.Hmi.*` |
+
 Namespaces used throughout:
 
 ```csharp
+// Siemens.Engineering.Base.dll
 using Siemens.Engineering;              // TiaPortal, Project, ExportOptions
+using Siemens.Engineering.Compiler;     // ICompilable, CompilerResult
 using Siemens.Engineering.HW;           // Device, DeviceItem, Subnet, Node
 using Siemens.Engineering.HW.Features;  // SoftwareContainer, NetworkInterface, IoSystem
+
+// Siemens.Engineering.Step7.dll
 using Siemens.Engineering.SW;           // PlcSoftware
 using Siemens.Engineering.SW.Blocks;    // PlcBlock, PlcBlockGroup
 using Siemens.Engineering.SW.Tags;      // PlcTagTable, PlcTag
 using Siemens.Engineering.SW.Types;     // PlcType, PlcTypeGroup
 using Siemens.Engineering.SW.ExternalSources;
-using Siemens.Engineering.Compiler;     // ICompilable, CompilerResult
+
+// Siemens.Engineering.Hmi.dll
 using Siemens.Engineering.Hmi;          // HmiTarget
 ```
+
+Others you will reach for eventually: `Siemens.Engineering.Cax` (AutomationML),
+`.Download`, `.Upload`, `.Compare`, `.Library{,.MasterCopies,.Types}`,
+`.HW.{Extensions,Utilities}`, `.SW.TechnologicalObjects{,.Motion}`,
+`.Hmi.{Communication,Cycle,Globalization,RuntimeScripting,Screen,Tag,TextGraphicList}`.
 
 ---
 

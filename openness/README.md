@@ -8,41 +8,59 @@ diffed. This program executes it and reports.
 
 ---
 
+## Two projects here
+
+| | |
+|---|---|
+| **`TiaGen.Openness/`** | the CLI driver - `doctor`, `apply`, `verify`, `export`. Runs outside TIA Portal, scriptable, CI-able. |
+| **`TiaGen.AddIn/`** | a TIA Portal Add-In putting a "Claude" item in the project-tree context menu. Runs *inside* TIA Portal. See its [README](TiaGen.AddIn/README.md). |
+
+---
+
 ## Requirements
 
-- Windows 10/11 x64
-- **TIA Portal V21** with the **Openness** setup component installed
+- Windows 10/11, 64-bit
+- **TIA Portal V21** installed. From V21 Openness is an *inherent feature* of TIA Portal,
+  not an optional setup component, so there is nothing extra to tick.
 - **.NET Framework 4.8**
 - The running user in the local group **`Siemens TIA Openness`**
 - Newtonsoft.Json 13 (restored from NuGet, or dropped next to the exe)
 
-`doctor` checks all of this except the last.
+`doctor` checks all of this except the last, plus the Openness AllowList.
 
 ---
 
 ## Build
 
 ```bat
-msbuild TiaGen.Openness\TiaGen.Openness.csproj /p:Configuration=Release /p:Platform=x64
+msbuild TiaGen.Openness\TiaGen.Openness.csproj /p:Configuration=Release
 ```
 
-If TIA is not in the default location, point the build at your PublicAPI folder:
+If TIA is not in the default location, point the build at the assembly folder. **Note the
+`net48` subfolder** - V21 made the Openness libraries modular and moved them:
 
 ```bat
 msbuild TiaGen.Openness\TiaGen.Openness.csproj /p:Configuration=Release ^
-  /p:TiaOpennessDir="D:\Siemens\Automation\Portal V21\PublicAPI\V21"
+  /p:TiaOpennessDir="D:\Siemens\Automation\Portal V21\PublicAPI\V21\net48"
 ```
 
 Notes on the project file:
 
-- **x64 is mandatory.** The Siemens assemblies have no 32-bit build; AnyCPU produces a
-  binary that fails at runtime with a `BadImageFormatException`.
-- The Siemens references are **compile-time only** (`Private=false`). They are never
-  copied next to the exe and never redistributed - `OpennessResolver` finds the real
-  ones through the registry at runtime, which is what lets one binary run on a machine
-  with a different TIA build.
-- `Siemens.Engineering.Hmi.dll` is referenced only if present, and the HMI code is
-  behind `HAS_HMI_ASSEMBLY` so the project builds either way.
+- **AnyCPU is fine.** Openness talks to TIA Portal out of process over .NET Remoting, so
+  the client does not have to match TIA's bitness - the V21 manual lists 32-bit, 64-bit
+  and AnyCPU clients as supported.
+- **The references are modular.** `Siemens.Engineering.Base.dll` carries the core,
+  `Siemens.Engineering.Step7.dll` the PLC software API, `Siemens.Engineering.Hmi.dll` the
+  HMI API. Which ones exist depends on the TIA products installed. A pre-V21 fallback
+  reference to the old single `Siemens.Engineering.dll` is included so a V20 machine still
+  builds.
+- The Siemens references are **compile-time only** (`Private=false`) - the manual states
+  that "Copy Local: True" is not supported. They are never copied next to the exe and
+  never redistributed; `OpennessResolver` finds the real ones through the registry at
+  runtime, which is what lets one binary run against a different TIA build.
+- The HMI code sits behind `HAS_HMI_ASSEMBLY` so the project builds without the HMI
+  assembly.
+- **V21 is a breaking change**: binaries built against V17-V20 do not run on V21.
 
 ---
 
@@ -56,8 +74,13 @@ Run this first on any new machine. Needs no project.
 TiaGen.Openness.exe doctor
 ```
 
-Checks bitness, group membership (with the exact `net localgroup` command to fix it),
-and which Openness assemblies are registered where.
+Checks the OS, group membership (with the exact `net localgroup` command to fix it), the
+Openness **AllowList**, and every Openness installation the registry knows about with the
+modular assemblies each one provides.
+
+Note on the AllowList: TIA Portal only accepts connections from executables on it, and the
+first connection from a new executable raises a confirmation dialog. That dialog is a human
+gate - accept it once, by hand.
 
 ### apply
 
