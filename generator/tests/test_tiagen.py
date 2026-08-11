@@ -644,6 +644,99 @@ class TestSequence(unittest.TestCase):
         self.assertIn("is not a duration", str(caught.exception))
 
 
+class TestImportedLadderRules(unittest.TestCase):
+    """Rules carried over from the Panasonic LadderLogicReview rule set.
+
+    The notation changes from ladder to a step table; the hazards do not.
+    """
+
+    def test_opposing_verbs_cancel_each_other_in_the_same_step(self):
+        # Requests persist across steps, so if 'stop' did not clear _Start the device
+        # FB would see both requests at once from the second step onwards.
+        spec = seq_spec([
+            {"step": 10, "message": "Run", "actions": ["Conv.start"],
+             "wait_for": ["Conv.running"], "timeout": "5s"},
+            {"step": 20, "message": "Halt", "actions": ["Conv.stop"],
+             "wait_for": ["Conv.stopped"], "timeout": "5s"},
+        ])
+        scl = emit_seq.emit_fb_sequence(spec, spec.sequence)
+        self.assertIn("#Auto.Conv_Start := TRUE;", scl)
+        self.assertIn("#Auto.Conv_Stop := FALSE;", scl)
+        self.assertIn("#Auto.Conv_Stop := TRUE;", scl)
+        self.assertIn("#Auto.Conv_Start := FALSE;", scl)
+
+    def test_a_request_never_cancelled_in_a_cyclic_sequence_warns(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Run", "actions": ["Conv.start"],
+             "wait_for": ["Conv.running"], "timeout": "5s"},
+        ])
+        _, warnings = validate.check(spec)
+        self.assertTrue(any("nothing in the cycle cancels it" in w for w in warnings))
+
+        # Adding the stop clears it.
+        fixed = seq_spec([
+            {"step": 10, "message": "Run", "actions": ["Conv.start"],
+             "wait_for": ["Conv.running"], "timeout": "5s"},
+            {"step": 20, "message": "Halt", "actions": ["Conv.stop"],
+             "wait_for": ["Conv.stopped"], "timeout": "5s"},
+        ])
+        _, warnings = validate.check(fixed)
+        self.assertFalse(any("cancels it" in w for w in warnings))
+
+    def test_a_transition_that_can_never_be_true_is_an_error(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Impossible",
+             "wait_for": ["Conv.running", "not Conv.running"], "timeout": "5s"},
+        ])
+        errors, _ = validate.check(spec)
+        self.assertTrue(any("cannot both be true" in e for e in errors))
+
+    def test_a_step_advancing_on_time_alone_warns(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Dwell", "actions": ["Conv.start"],
+             "timeout": "5s", "on_timeout": "continue"},
+            {"step": 20, "message": "Halt", "actions": ["Conv.stop"],
+             "wait_for": ["Conv.stopped"], "timeout": "5s"},
+        ])
+        _, warnings = validate.check(spec)
+        self.assertTrue(any("advances on its timeout alone" in w for w in warnings))
+
+    def test_a_zero_timeout_is_an_error(self):
+        spec = seq_spec([
+            {"step": 10, "message": "x", "wait_for": ["PartSensor"], "timeout": 0},
+        ])
+        errors, _ = validate.check(spec)
+        self.assertTrue(any("expires immediately" in e for e in errors))
+
+    def test_test_and_bypass_names_are_flagged_everywhere_they_appear(self):
+        spec = spec_from(
+            [{"name": "BypassValve", "type": "valve_single", "description": "d"}],
+            sequence={"name": "Cycle", "steps": [
+                {"step": 10, "name": "Step10", "message": "TODO fix this message",
+                 "wait_for": ["BypassValve.opened"], "timeout": "1s"},
+            ]},
+        )
+        _, warnings = validate.check(spec)
+        joined = " ".join(warnings)
+        self.assertIn("'bypass'", joined)
+        self.assertIn("'todo'", joined)
+
+    def test_a_copied_step_message_is_flagged(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Clamping the part", "actions": ["Clamp.open"],
+             "wait_for": ["Clamp.opened"], "timeout": "1s"},
+            {"step": 20, "message": "Clamping the part", "actions": ["Clamp.close"],
+             "wait_for": ["Clamp.closed"], "timeout": "1s"},
+        ])
+        _, warnings = validate.check(spec)
+        self.assertTrue(any("share the message" in w for w in warnings))
+
+    def test_a_vague_equipment_name_is_flagged(self):
+        spec = spec_from([{"name": "Flag1", "type": "digital_output", "description": "d"}])
+        _, warnings = validate.check(spec)
+        self.assertTrue(any("not a descriptive name" in w for w in warnings))
+
+
 class TestStepImport(unittest.TestCase):
     CSV = (
         "Step No;Step Name;Operator Message;Actions;Condition;Max time;On timeout\n"

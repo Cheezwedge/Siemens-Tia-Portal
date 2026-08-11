@@ -96,7 +96,7 @@ sequence:
     - step: 1200
       name: ClampPart
       message: Clamping the part
-      actions: [Clamp.open]
+      actions: [Infeed.stop, Clamp.open]
       wait_for: [Clamp.opened]
       timeout: 3s
 
@@ -117,7 +117,7 @@ sequence:
     - step: 1500
       name: ReleasePart
       message: Releasing the clamp
-      actions: [Clamp.close]
+      actions: [Outfeed.stop, Clamp.close]
       wait_for: [Clamp.closed]
       timeout: 3s
 

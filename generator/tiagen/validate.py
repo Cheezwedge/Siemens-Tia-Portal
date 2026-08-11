@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from typing import List, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from . import devices as dev
 from . import sequence
@@ -35,6 +35,7 @@ def check(spec: Spec) -> Tuple[List[str], List[str]]:
     _check_order_numbers(spec, warnings)
     _check_hmi(spec, warnings)
     _check_sequence(spec, errors, warnings)
+    _check_hygiene(spec, warnings)
 
     return errors, warnings
 
@@ -297,6 +298,168 @@ def _check_sequence(spec: Spec, errors: List[str], warnings: List[str]) -> None:
     for step in seq.steps:
         if not step.message.strip():
             errors.append(f"sequence step {step.number} has an empty message")
+
+    _check_step_transitions(spec, seq, errors, warnings)
+    _check_cycle_returns_to_start(spec, seq, warnings)
+
+
+def _check_step_transitions(spec: Spec, seq, errors: List[str], warnings: List[str]) -> None:
+    """Transition rules carried over from the ladder rule set.
+
+    A ladder reviewer looks for a rung that can never be true, and for a timer
+    done-bit used as the only permissive. Both hazards exist unchanged in a step
+    table; only the notation is different.
+    """
+    for step in seq.steps:
+        resolved = []
+        for text in step.wait_for:
+            try:
+                resolved.append(sequence.resolve_condition(spec, text))
+            except sequence.SequenceError:
+                continue        # already reported against this step
+
+        # X and NOT X in the same "all" transition can never both hold - the
+        # equivalent of an NO and an NC contact on one address in series.
+        if step.wait_mode == "all":
+            positive = {c.key for c in resolved if not c.negated}
+            negative = {c.key for c in resolved if c.negated}
+            for key in sorted(positive & negative):
+                sources = [c.source for c in resolved if c.key == key]
+                errors.append(
+                    f"sequence step {step.number} waits for {' and '.join(sources)}, which "
+                    "cannot both be true. The step would never advance."
+                )
+
+        # Time as the only permissive: nothing confirms the step's actions happened.
+        if step.on_timeout == "continue" and not step.wait_for:
+            warnings.append(
+                f"sequence step {step.number} ({step.name}) advances on its timeout alone, "
+                "with nothing confirming its actions completed. A timeout is a backstop, "
+                "not a permissive - add the condition that proves the step finished."
+            )
+
+        if step.timeout_ms is not None and step.timeout_ms <= 0:
+            errors.append(
+                f"sequence step {step.number} has a timeout of {step.timeout_ms} ms, which "
+                "expires immediately"
+            )
+
+        if len(step.wait_for) > 6:
+            warnings.append(
+                f"sequence step {step.number} ({step.name}) waits on {len(step.wait_for)} "
+                "conditions. Consider splitting it - a step this wide is hard to diagnose, "
+                "and only the first unsatisfied condition is reported to the operator."
+            )
+
+
+def _check_cycle_returns_to_start(spec: Spec, seq, warnings: List[str]) -> None:
+    """A cyclic sequence should leave the machine as it found it.
+
+    The generated sequencer re-asserts requests per step, so nothing latches on
+    the way a SET coil does. What can still happen is a cycle that opens something
+    and never closes it - the machine ends the cycle in a different state from the
+    one it started in, and the second cycle behaves differently from the first.
+    """
+    if not seq.cyclic:
+        return
+
+    asserted: Dict[str, int] = {}
+    released: Set[str] = set()
+    verb_for: Dict[str, str] = {}
+    for step in seq.steps:
+        for text in step.actions:
+            try:
+                resolved = sequence.resolve_action(spec, text)
+            except sequence.SequenceError:
+                continue
+            for action in resolved:
+                if action.value == "FALSE":
+                    released.add(action.member)
+                elif action.value == "TRUE":
+                    asserted.setdefault(action.member, step.number)
+                    verb_for.setdefault(action.member, action.source)
+
+    for member, step_number in sorted(asserted.items(), key=lambda kv: kv[1]):
+        if member in released:
+            continue
+        warnings.append(
+            f"sequence: '{member}' is requested at step {step_number} and nothing in the "
+            f"cycle cancels it (requested by '{verb_for[member]}'). Requests persist, so the "
+            "cycle ends in a different state from the one it started in and the second cycle "
+            "does not repeat the first."
+        )
+
+
+# Names that mean somebody was debugging. Adapted from the LadderLogicReview rule
+# set (R011): the hazard is identical on any platform - a bypass that was meant to
+# come out before the machine shipped.
+_BYPASS_WORDS = (
+    "bypass", "debug", "dummy", "temp", "tmp", "testbit", "forcebit",
+    "force", "override", "fixme", "todo", "xxx", "scrap", "delete",
+)
+# Names that carry no meaning. A tag called Flag1 is a tag nobody can search for.
+_VAGUE_NAMES = {
+    "tmp", "temp", "var", "bit", "flag", "thing", "stuff", "data", "value",
+    "test", "aux", "misc", "new", "old", "x", "y", "z", "a", "b", "c",
+}
+_VAGUE_RE = re.compile(r"^(flag|bit|var|tag|item|obj|val|out|in)\d*$", re.I)
+
+
+def _looks_like_debug(text: str) -> Optional[str]:
+    lowered = text.lower()
+    for word in _BYPASS_WORDS:
+        if word in lowered:
+            return word
+    return None
+
+
+def _check_hygiene(spec: Spec, warnings: List[str]) -> None:
+    """Naming and documentation rules that survive the move from ladder to SCL."""
+    for eq in spec.equipment:
+        found = _looks_like_debug(eq.name)
+        if found:
+            warnings.append(
+                f"'{eq.name}' contains '{found}', which reads like a test or bypass left "
+                "over from commissioning. Rename it or remove it before this machine ships."
+            )
+        if eq.name.lower() in _VAGUE_NAMES or _VAGUE_RE.match(eq.name):
+            warnings.append(
+                f"'{eq.name}' is not a descriptive name. It becomes a tag name, an HMI tag "
+                "and an alarm text - name it after what it is on the machine."
+            )
+        # Every generated tag takes its comment from the description, so a missing
+        # description means a wiring list whose comment column repeats the name.
+        if eq.typedef.fb and not eq.description:
+            warnings.append(
+                f"'{eq.name}' has no description, so its tag comments, HMI tags and alarm "
+                "text will just repeat the name"
+            )
+
+    seq = spec.sequence
+    if seq is None:
+        return
+
+    for step in seq.steps:
+        for label, text in (("name", step.name), ("message", step.message)):
+            found = _looks_like_debug(text)
+            if found:
+                warnings.append(
+                    f"sequence step {step.number}: {label} contains '{found}'. An operator "
+                    "message is machine documentation - it should not mention debugging."
+                )
+
+    # A copied step whose message was never updated tells the operator the wrong thing
+    # for the whole of that step. Adapted from the duplicate-comment rule.
+    by_message: Dict[str, List[int]] = {}
+    for step in seq.steps:
+        by_message.setdefault(step.message.strip().lower(), []).append(step.number)
+    for message, steps in by_message.items():
+        if len(steps) > 1 and message:
+            listed = ", ".join(str(s) for s in steps)
+            warnings.append(
+                f"sequence steps {listed} share the message '{message}'. If a step was "
+                "copied, its message was not updated - the operator cannot tell them apart."
+            )
 
 
 def _check_hmi(spec: Spec, warnings: List[str]) -> None:

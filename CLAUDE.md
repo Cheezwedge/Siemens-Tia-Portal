@@ -51,7 +51,7 @@ python -m tiagen explain  ../spec/examples/minimal.yaml  # the I/O list
 python -m tiagen build    ../spec/examples/minimal.yaml -o ../out/minimal
 python -m tiagen import-steps steps.csv -o seq.yaml       # step spreadsheet -> sequence section
 
-cd .. && python3 -m unittest discover -s generator/tests  # 72 tests, keep them green
+cd .. && python3 -m unittest discover -s generator/tests  # 80 tests, keep them green
 ```
 
 The Openness driver only runs on Windows with TIA Portal V21 installed; it cannot be

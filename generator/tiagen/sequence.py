@@ -50,37 +50,54 @@ STATUS_ALIASES = {
 # Analog status, compared against a number rather than tested as a bit.
 VALUE_ALIASES = {"value": "Act_Value", "actual": "Act_Value"}
 
-# Action verbs, by equipment type, mapping to the UDT_*Auto member suffix. A verb
-# whose value is None clears the request instead of setting it - a single-acting
-# valve has one coil, so "close" is "stop asking it to open".
-ACTION_VERBS: Dict[str, Dict[str, Tuple[str, Any]]] = {
+# Action verbs, by equipment type. Each verb maps to every assignment it makes, so
+# a verb is self-consistent: nothing else has to be said in the step to make it true.
+#
+# This matters because a request PERSISTS until something changes it - the sequencer
+# does not clear requests when a step advances, which is what lets a clamp stay
+# clamped for the six steps after the one that closed it. The consequence is that
+# opposing verbs must cancel each other explicitly. If "stop" only asserted _Stop,
+# then _Start would still be TRUE from the earlier step and the device FB would see
+# both requests at once.
+ACTION_VERBS: Dict[str, Dict[str, Tuple[Tuple[str, Any], ...]]] = {
     "motor_dol": {
-        "start": ("_Start", True), "run": ("_Start", True),
-        "stop": ("_Stop", True),
+        "start": (("_Start", True), ("_Stop", False)),
+        "run": (("_Start", True), ("_Stop", False)),
+        "stop": (("_Stop", True), ("_Start", False)),
     },
     "motor_reversing": {
-        "forward": ("_Fwd", True), "fwd": ("_Fwd", True),
-        "reverse": ("_Rev", True), "rev": ("_Rev", True),
+        "forward": (("_Fwd", True), ("_Rev", False)),
+        "fwd": (("_Fwd", True), ("_Rev", False)),
+        "reverse": (("_Rev", True), ("_Fwd", False)),
+        "rev": (("_Rev", True), ("_Fwd", False)),
+        # Neither direction requested is how a reversing motor is told to stop.
+        "stop": (("_Fwd", False), ("_Rev", False)),
     },
     "vfd_analog": {
-        "start": ("_Start", True), "run": ("_Start", True),
-        "stop": ("_Stop", True),
-        "speed": ("_Speed", "number"), "setpoint": ("_Speed", "number"),
+        "start": (("_Start", True), ("_Stop", False)),
+        "run": (("_Start", True), ("_Stop", False)),
+        "stop": (("_Stop", True), ("_Start", False)),
+        "speed": (("_Speed", "number"),),
+        "setpoint": (("_Speed", "number"),),
     },
     "valve_single": {
-        "open": ("_Open", True),
-        "close": ("_Open", False), "closed": ("_Open", False),
+        # One coil: "closed" is the de-energised state, so close clears the request.
+        "open": (("_Open", True),),
+        "close": (("_Open", False),),
+        "closed": (("_Open", False),),
     },
     "valve_double": {
-        "open": ("_Open", True),
-        "close": ("_Open", False), "closed": ("_Open", False),
+        "open": (("_Open", True),),
+        "close": (("_Open", False),),
+        "closed": (("_Open", False),),
     },
     "digital_output": {
-        "on": ("_Cmd", True), "set": ("_Cmd", True),
-        "off": ("_Cmd", False), "clear": ("_Cmd", False),
+        "on": (("_Cmd", True),), "set": (("_Cmd", True),),
+        "off": (("_Cmd", False),), "clear": (("_Cmd", False),),
     },
     "analog_output": {
-        "value": ("_Value", "number"), "setpoint": ("_Value", "number"),
+        "value": (("_Value", "number"),),
+        "setpoint": (("_Value", "number"),),
     },
 }
 
@@ -367,8 +384,12 @@ class Action:
     value: str           # SCL literal
 
 
-def resolve_action(spec, text: str) -> Action:
-    """Resolve one action to an assignment into the Auto struct."""
+def resolve_action(spec, text: str) -> List[Action]:
+    """Resolve one action to the assignments it makes into the Auto struct.
+
+    Returns a list because an opposing pair has to be cancelled in the same breath -
+    see the note on ACTION_VERBS.
+    """
     raw = text.strip()
     value_text: Optional[str] = None
     if "=" in raw:
@@ -394,20 +415,26 @@ def resolve_action(spec, text: str) -> Action:
             + ", ".join(sorted(verbs))
         )
 
-    suffix, kind = entry
-    member = f"{device_name}{suffix}"
-    if kind == "number":
-        if value_text is None:
-            raise SequenceError(f"action '{text}' needs a value, for example '{raw} = 50'")
-        try:
-            return Action(text, member, _real_literal(float(value_text)))
-        except ValueError:
-            raise SequenceError(f"action '{text}': '{value_text}' is not a number")
-    if value_text is not None:
+    takes_value = any(kind == "number" for _, kind in entry)
+    if takes_value and value_text is None:
+        raise SequenceError(f"action '{text}' needs a value, for example '{raw} = 50'")
+    if not takes_value and value_text is not None:
         raise SequenceError(
             f"action '{text}': '{verb}' does not take a value - write '{raw}' on its own"
         )
-    return Action(text, member, "TRUE" if kind else "FALSE")
+
+    actions: List[Action] = []
+    for suffix, kind in entry:
+        member = f"{device_name}{suffix}"
+        if kind == "number":
+            try:
+                literal = _real_literal(float(value_text))
+            except ValueError:
+                raise SequenceError(f"action '{text}': '{value_text}' is not a number")
+            actions.append(Action(text, member, literal))
+        else:
+            actions.append(Action(text, member, "TRUE" if kind else "FALSE"))
+    return actions
 
 
 def conditions_of(spec, seq: Sequence) -> List[Condition]:

@@ -5,6 +5,11 @@ the device requests for that step, the transition that leaves it, its timeout an
 its identity - so the whole sequence reads top to bottom in step order, which is
 how somebody debugging it will read it.
 
+Requests persist once made: a step's request stays asserted after the step advances,
+until an opposing request replaces it or the machine FB clears everything on losing
+AutoRun. That is deliberate - a clamp closed at step 1200 has to still be closed at
+step 1600 without the request being restated in every step between.
+
 Three things are published that a hand-written sequencer usually lacks, because
 the generator knows them and a person would forget one:
 
@@ -145,8 +150,12 @@ def emit_fb_sequence(spec: Spec, seq: Sequence) -> str:
     lines += [
         "    // ==================================================================",
         "    // 2. The sequence. One branch per step: requests, then the transition.",
-        "    //    Requests are re-asserted every cycle the step is active, so a",
-        "    //    request never outlives its step.",
+        "    //",
+        "    //    A request PERSISTS after its step advances - that is what lets a",
+        "    //    clamp stay clamped for the rest of the cycle without repeating the",
+        "    //    request in every step. It is cleared by an opposing request, or by",
+        "    //    the machine FB when AutoRun drops. Opposing verbs cancel each other",
+        "    //    in the same step, so start and stop are never both requested.",
         "    // ==================================================================",
         "    CASE #Step OF",
     ]
@@ -220,8 +229,10 @@ def _step_branch(spec: Spec, seq: Sequence, step, index: int, reason_id) -> List
 
     if step.actions:
         for text in step.actions:
-            action = seq_mod.resolve_action(spec, text)
-            lines.append(f"{pad}#Auto.{action.member} := {action.value};   // {action.source}")
+            for action in seq_mod.resolve_action(spec, text):
+                lines.append(
+                    f"{pad}#Auto.{action.member} := {action.value};   // {action.source}"
+                )
     else:
         lines.append(f"{pad};   // no requests: this step only waits")
 
