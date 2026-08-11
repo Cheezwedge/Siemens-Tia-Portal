@@ -1,3 +1,8 @@
+// Scaled analog measurement with range check, filtering and four limits.
+//
+// The range check runs BEFORE scaling, deliberately: a broken wire reads as an
+// out-of-range count, and scaling it first would turn that into a plausible
+// engineering value that nothing downstream could tell was wrong.
 FUNCTION_BLOCK "FB_AnalogIn"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

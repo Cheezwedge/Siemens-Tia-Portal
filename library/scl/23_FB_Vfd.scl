@@ -1,3 +1,8 @@
+// VFD driven by a hardwired run output and an analog speed reference.
+//
+// Engineering units are scaled to raw counts here, and the setpoint is clamped, so a
+// spec value outside the drive's range cannot be written. The reference is zeroed
+// whenever the drive is not commanded, so a stale setpoint cannot start a ramp.
 FUNCTION_BLOCK "FB_Vfd"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

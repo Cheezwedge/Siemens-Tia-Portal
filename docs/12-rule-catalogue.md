@@ -152,3 +152,40 @@ use here:
 The rule that must never move the other way is the checker itself. A model is for
 explaining a violation and for the rules a regex cannot express - never for deciding
 whether a mechanical rule passed.
+
+---
+
+## Running it
+
+```bash
+cd generator
+python -m tiagen lint --list                    # the catalogue, and what is implemented
+python -m tiagen lint ../out/mymachine/scl      # lint generated output (should be silent)
+python -m tiagen lint C:\export --min-severity warning
+python -m tiagen lint C:\export --format json   # for CI
+```
+
+Exit code is 1 when anything at `error` severity is found, so it can gate a pull request.
+
+**The generator's own output must lint clean.** That is a test
+(`test_generated_output_is_clean`), not an aspiration: if the generator emits something
+the house rules reject, one of the two is wrong and the build says so.
+
+### Formats
+
+| Format | Support |
+|---|---|
+| `.scl` | **fully parsed.** TIA has exported SCL from any block for years, so lint works today with no driver build |
+| `.xml` (SimaticML) | block identity, language and per-network comments, with namespaces read rather than assumed |
+| `.s7dcl` (SIMATIC SD) | read as text; block name and language recovered. **Structure not parsed yet** - awaiting a real export |
+| `.s7res` | read alongside its block |
+
+A block read as text only is **reported as unchecked**, never as clean - the report says
+how many, and rules needing structure skip them. A checker that silently passes what it
+could not read is worse than no checker.
+
+### Encoding
+
+TIA writes UTF-8 with a BOM in some places and UTF-16 in others. Both are detected, plus
+UTF-16 with no BOM, because the failure mode otherwise is a file that reads as empty and a
+run that reports nothing wrong.

@@ -159,7 +159,21 @@ def _device_call(spec: Spec, eq: Equipment) -> str:
 
 def emit_fb_machine(spec: Spec) -> str:
     controlled = spec.controlled()
-    lines: List[str] = [HEADER, f"FUNCTION_BLOCK {_q(spec.fb_machine)}"]
+    # A block description, not just the provenance header: lint requires one, and the
+    # person opening this at 2am needs to know the section order before they read it.
+    description = [
+        f"// {spec.fb_machine} - the machine block for {spec.machine}.",
+        "//",
+        "// Sections run in this order, and the order is load bearing: safety status is",
+        "// aggregated first, the mode manager derives Enable from it, the sequence writes",
+        "// requests, the device calls act on them, and alarms are aggregated last.",
+        "//",
+        "// Every actuator is gated by the mode manager's Enable, so the safety system's",
+        f"// status reaches the program in exactly one place. Called once per cycle from"
+        f" {spec.ob_main}.",
+    ]
+    lines: List[str] = [HEADER, "\n".join(description), "",
+                        f"FUNCTION_BLOCK {_q(spec.fb_machine)}"]
     lines.append("{ S7_Optimized_Access := 'TRUE' }")
     lines.append("VERSION : 0.1")
 

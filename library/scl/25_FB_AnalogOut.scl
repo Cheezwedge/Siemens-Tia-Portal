@@ -1,3 +1,7 @@
+// Scaled analog output: engineering units in, clamped raw counts out.
+//
+// Writes its fail-safe value when Enable is lost rather than holding the last
+// commanded value, so a stopped machine does not leave a valve part-open.
 FUNCTION_BLOCK "FB_AnalogOut"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

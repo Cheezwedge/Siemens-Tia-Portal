@@ -43,6 +43,23 @@ def main(argv: List[str] | None = None) -> int:
     p_exp = sub.add_parser("explain", help="print the I/O and block summary for a spec")
     p_exp.add_argument("spec")
 
+    p_lint = sub.add_parser(
+        "lint",
+        help="check an exported TIA project against the house rules in rules.yaml",
+    )
+    p_lint.add_argument("target", nargs="?", default=".",
+                        help="export directory, or a single exported file")
+    p_lint.add_argument("--rules", help="rule catalogue (default: rules.yaml at the repo root)")
+    p_lint.add_argument("--library", default=build_mod.DEFAULT_LIBRARY,
+                        help="library directory to compare device FBs against")
+    p_lint.add_argument("--min-severity", default="info",
+                        choices=["error", "warning", "info"],
+                        help="hide findings below this severity (default: info)")
+    p_lint.add_argument("--format", default="text", choices=["text", "json"],
+                        dest="output_format")
+    p_lint.add_argument("--list", action="store_true", dest="list_rules",
+                        help="print the rule catalogue and exit")
+
     p_imp = sub.add_parser(
         "import-steps",
         help="turn a step spreadsheet (CSV) into the spec's sequence section",
@@ -64,6 +81,8 @@ def main(argv: List[str] | None = None) -> int:
             return _cmd_build(args)
         if args.command == "import-steps":
             return _cmd_import_steps(args)
+        if args.command == "lint":
+            return _cmd_lint(args)
     except model.SpecError as exc:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
@@ -74,6 +93,40 @@ def main(argv: List[str] | None = None) -> int:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
     return 1
+
+
+def _cmd_lint(args) -> int:
+    import json as _json
+
+    from . import lint as lint_mod
+
+    rules = lint_mod.load_rules(args.rules)
+
+    if args.list_rules:
+        for rule in rules:
+            state = "enabled " if rule.enabled else "disabled"
+            impl = "" if rule.implemented else "   [NOT IMPLEMENTED]"
+            print(f"{rule.id}  {rule.severity.value:<7} {state} {rule.name}{impl}")
+            print(f"        {rule.description}")
+        missing = [r.id for r in rules if r.enabled and not r.implemented]
+        print()
+        print(f"{len(rules)} rules, {sum(1 for r in rules if r.enabled)} enabled, "
+              f"{len(missing)} without an implementation"
+              + (f": {', '.join(missing)}" if missing else ""))
+        return 0
+
+    project = lint_mod.load_project(args.target, library_dir=args.library)
+    findings = lint_mod.filter_by_severity(
+        lint_mod.run(project, rules), args.min_severity
+    )
+
+    if args.output_format == "json":
+        print(_json.dumps(lint_mod.as_json(findings, project, rules), indent=2))
+    else:
+        print(lint_mod.format_report(findings, project, rules), end="")
+
+    # Non-zero on an error so this can gate a pull request.
+    return 1 if any(f.severity is lint_mod.Severity.ERROR for f in findings) else 0
 
 
 def _cmd_import_steps(args) -> int:

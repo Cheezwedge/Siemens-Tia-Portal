@@ -50,8 +50,10 @@ python -m tiagen validate ../spec/examples/minimal.yaml  # engineering rules
 python -m tiagen explain  ../spec/examples/minimal.yaml  # the I/O list
 python -m tiagen build    ../spec/examples/minimal.yaml -o ../out/minimal
 python -m tiagen import-steps steps.csv -o seq.yaml       # step spreadsheet -> sequence section
+python -m tiagen lint     ../out/minimal/scl              # house rules over an export
+python -m tiagen lint --list                             # the rule catalogue
 
-cd .. && python3 -m unittest discover -s generator/tests  # 80 tests, keep them green
+cd .. && python3 -m unittest discover -s generator/tests  # 90 tests, keep them green
 ```
 
 The Openness driver only runs on Windows with TIA Portal V21 installed; it cannot be

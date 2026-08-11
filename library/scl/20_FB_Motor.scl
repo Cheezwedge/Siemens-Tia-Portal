@@ -1,3 +1,9 @@
+// Direct-on-line motor: one run output, with optional running and fault feedback.
+//
+// Faults latch and need an acknowledge that refuses to clear while the cause is still
+// present. Three causes are distinguished so the HMI can say which: an overload
+// contact, a commanded motor with no running feedback, and feedback present with no
+// command - the last of which catches a welded contactor.
 FUNCTION_BLOCK "FB_Motor"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

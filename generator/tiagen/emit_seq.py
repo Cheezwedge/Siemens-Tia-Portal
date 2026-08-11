@@ -69,7 +69,22 @@ def emit_fb_sequence(spec: Spec, seq: Sequence) -> str:
     }
     steps = seq.steps
 
-    lines: List[str] = [HEADER, f"FUNCTION_BLOCK {_q(spec.fb_sequence)}"]
+    description = [
+        f"// {spec.fb_sequence} - the step sequence '{seq.name}' for {spec.machine}.",
+        "//",
+        f"// {len(steps)} steps, {steps[0].number} to {steps[-1].number}, "
+        + ("returning to the first step" if seq.cyclic else "ending at idle")
+        + f". Idle is step {seq.idle_number}.",
+        "//",
+        "// A request PERSISTS after its step advances, until an opposing request replaces",
+        "// it or the machine FB clears everything on losing AutoRun. That is what lets a",
+        "// clamp stay clamped for the rest of the cycle.",
+        "//",
+        "// Generated from the spec's sequence section. Editing this block is pointless -",
+        "// the next build overwrites it. Edit the step table.",
+    ]
+    lines: List[str] = [HEADER, "\n".join(description), "",
+                        f"FUNCTION_BLOCK {_q(spec.fb_sequence)}"]
     lines += [
         "{ S7_Optimized_Access := 'TRUE' }",
         "VERSION : 0.1",

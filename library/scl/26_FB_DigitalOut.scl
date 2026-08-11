@@ -1,3 +1,7 @@
+// Single digital output - lamp, horn, or a solenoid needing no supervision.
+//
+// The simplest device in the library, and still gated by Enable and arbitrated
+// between manual and auto, so it behaves like every other device on the HMI.
 FUNCTION_BLOCK "FB_DigitalOut"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

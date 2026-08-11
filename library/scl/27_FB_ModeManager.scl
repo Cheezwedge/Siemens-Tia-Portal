@@ -1,3 +1,8 @@
+// Machine mode manager: owns Enable, the manual/auto selection, and group reset.
+//
+// Every actuator in the machine is gated by the Enable this block produces, so the
+// safety system's status enters the standard program at exactly one place. SafetyOk
+// is a STATUS input, not a safety function - see docs/07-safety-and-gates.md.
 FUNCTION_BLOCK "FB_ModeManager"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

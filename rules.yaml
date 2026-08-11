@@ -1,0 +1,217 @@
+# =============================================================================
+# tiagen lint — rule catalogue
+# =============================================================================
+#
+# These rules run against an *existing TIA project*, exported to text. They are
+# the counterpart to `tiagen validate`, which checks the spec before any code
+# exists. Between them:
+#
+#   validate   the spec is sound            -> the generator cannot emit a defect
+#   lint       the project is conforming    -> catches hand-written work, legacy
+#              (this file)                     machines, and library drift
+#
+# Each rule needs a matching check_<name>() in generator/tiagen/lint_rules.py.
+# `tiagen lint --list` prints every rule and whether it has an implementation.
+#
+# Severity: error | warning | info.  Errors make `lint` exit non-zero.
+#
+# Rule ids are permanent. They exist so a waiver can be recorded against a
+# machine - "L004 waived, the recipe DB is written by the HMI by design" - which
+# is a reviewable decision, unlike an argument about a paragraph.
+#
+# Structure and much of the content is adapted from LadderLogicReview, which
+# applies the same rule set to Panasonic FPWin Pro ladder. docs/12 records what
+# carried over, what the generator makes impossible, and what did not transfer.
+# =============================================================================
+
+rules:
+
+  # ---------------------------------------------------------------------------
+  # Library integrity — the most expensive failure a standard has
+  # ---------------------------------------------------------------------------
+
+  - id: L001
+    name: library_block_modified
+    severity: error
+    enabled: true
+    description: >
+      A device FB in the project differs from the reviewed library block of the
+      same name. A locally "improved" library block is the single most expensive
+      thing that happens to a standard: the machine works, the next machine does
+      not, and nobody knows which one is right. Fix the library and regenerate,
+      or rename the block so it is visibly bespoke.
+
+  - id: L002
+    name: generated_block_edited
+    severity: error
+    enabled: true
+    description: >
+      A block carrying the generated-by-tiagen header has been edited in place.
+      The next build overwrites it, so the change is already lost. Move it into
+      the spec, or into the AUTO SEQUENCE region if a step table cannot say it.
+
+  # ---------------------------------------------------------------------------
+  # Commissioning leftovers
+  # ---------------------------------------------------------------------------
+
+  - id: L003
+    name: test_bypass_bit
+    severity: warning
+    enabled: true
+    description: >
+      A symbol, comment or network title suggesting a test or temporary bypass
+      left over from commissioning - bypass, debug, dummy, temp, force, override,
+      TODO, FIXME. These must be gone before the machine ships.
+
+  - id: L004
+    name: forced_true_condition
+    severity: warning
+    enabled: true
+    description: >
+      Logic gated by a literal TRUE, a permanently-set bit, or a contact on an
+      address nothing ever writes. This is how a disabled interlock hides: the
+      rung looks complete and is unconditional.
+
+  # ---------------------------------------------------------------------------
+  # Output ownership
+  # ---------------------------------------------------------------------------
+
+  - id: L005
+    name: duplicate_output_write
+    severity: error
+    enabled: true
+    description: >
+      The same output is written from more than one place in a block. Only the
+      last write survives the scan; the earlier ones are silently overridden,
+      which is almost always a bug rather than an intention.
+
+  - id: L006
+    name: output_written_outside_device_fb
+    severity: warning
+    enabled: true
+    description: >
+      A physical output (%Q) written anywhere other than a device FB. The house
+      pattern is that exactly one block drives each output, so that when it
+      misbehaves there is one place to look.
+
+  # ---------------------------------------------------------------------------
+  # Addressing
+  # ---------------------------------------------------------------------------
+
+  - id: L007
+    name: absolute_address_used
+    severity: info
+    enabled: true
+    description: >
+      An absolute address (%I, %Q, %M, %DB) used where a symbol exists in the tag
+      table. Absolute addressing defeats search-and-replace and makes a rewire a
+      manual audit.
+
+  - id: L008
+    name: system_memory_write
+    severity: error
+    enabled: true
+    description: >
+      A write to the CPU's clock-memory or system-memory byte, or to a memory
+      area the tag table reserves. These are read-only to the program unless the
+      intent is documented.
+
+  # ---------------------------------------------------------------------------
+  # Documentation
+  # ---------------------------------------------------------------------------
+
+  - id: L009
+    name: block_missing_comment
+    severity: warning
+    enabled: true
+    description: >
+      A block with no title or description explaining its purpose.
+
+  - id: L010
+    name: network_missing_comment
+    severity: warning
+    enabled: true
+    description: >
+      A network or rung with no comment. Uncommented logic is the reason a
+      handover takes a week.
+
+  - id: L011
+    name: timer_without_explanation
+    severity: warning
+    enabled: true
+    description: >
+      A timer or counter whose network has no comment explaining the setpoint.
+      A bare T#3S tells the next engineer nothing about why three seconds.
+
+  - id: L012
+    name: duplicate_comment
+    severity: info
+    enabled: true
+    description: >
+      Two networks sharing a comment word for word. Usually one was copied and
+      its comment never updated, so the comment now describes the wrong logic.
+
+  # ---------------------------------------------------------------------------
+  # HMI cross-reference
+  # ---------------------------------------------------------------------------
+
+  - id: L013
+    name: hmi_tag_without_plc_symbol
+    severity: error
+    enabled: true
+    description: >
+      An HMI tag bound to a PLC symbol that does not exist in the project. The
+      panel shows a communication error at the worst possible moment - after a
+      rename that compiled cleanly.
+
+
+# =============================================================================
+# Deep-review rules — plain English, for the judgement calls
+#
+# These are not run by `lint`. They are the prompt for a reviewing agent, and
+# they live here so the whole standard is in one file rather than split between
+# code and somebody's prompt history.
+#
+# A rule belongs here only while it is genuinely a judgement call. The moment it
+# becomes decidable, move it into `rules:` above and implement it - a check that
+# gives the same answer every time is worth more than one that reads well.
+# =============================================================================
+
+deep_rules:
+
+  - >
+    Flag any actuator output that can be energised without a corresponding
+    overload, fault, or safety-status interlock in its own logic or in a
+    preceding permissive.
+
+  - >
+    Identify latching logic whose reset condition is missing, unreachable, or
+    can only be satisfied by something that is never true.
+
+  - >
+    Check handshaking between stations. Where one station signals completion,
+    verify the receiving station confirms the downstream device is ready before
+    acting on it, rather than assuming it.
+
+  - >
+    Check that equipment intended to run in parallel with the main sequence -
+    part feeding, labelling, vision - cannot be stopped when the main sequence
+    pauses or holds. Flag any parallel station whose run permissive is gated
+    directly by a main-sequence step number or run flag.
+
+  - >
+    Identify logic that depends on a specific number of scan cycles elapsing, or
+    a rising-edge contact used to measure time rather than to detect a change of
+    state. All timing should use timers with explicit setpoints.
+
+  - >
+    Flag any division whose divisor is a variable or input with no preceding
+    check that it cannot be zero.
+
+  - >
+    Flag any assignment or move whose source is 32-bit and whose destination is
+    16-bit. The upper word is discarded silently.
+
+  - >
+    Identify logic that is excessively wide - more than eight or so terms in one
+    expression or network. It should be split, with the intermediate result named.

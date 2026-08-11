@@ -1,3 +1,8 @@
+// Valve, single or double acting. Travel is supervised in both directions.
+//
+// Contradictory feedback - both limit switches made at once - is a distinct fault
+// from a travel timeout, because it means a sensor or its wiring rather than a
+// stuck valve. De-energises on losing Enable.
 FUNCTION_BLOCK "FB_Valve"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1

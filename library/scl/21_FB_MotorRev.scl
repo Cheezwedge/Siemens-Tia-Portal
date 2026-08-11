@@ -1,3 +1,8 @@
+// Reversing motor: two contactors, interlocked so both can never be commanded.
+//
+// The interlock is in this block rather than left to the wiring, and a change-over
+// dead time is enforced between directions so the contactors never overlap on a
+// direction request that arrives mid-run.
 FUNCTION_BLOCK "FB_MotorRev"
 { S7_Optimized_Access := 'TRUE' }
 VERSION : 0.1
