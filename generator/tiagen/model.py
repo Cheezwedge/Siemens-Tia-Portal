@@ -270,7 +270,10 @@ def from_dict(raw: Dict[str, Any]) -> Spec:
     if hmi is not None:
         hmi.setdefault("name", "HMI_1")
         hmi.setdefault("runtime", "unified")
-        hmi.setdefault("resolution", "1920x1080")
+        # resolution is deliberately not defaulted here. Both readers fall back to
+        # 1920x1080 themselves, and leaving the key absent is what lets the validator
+        # tell "they chose a monitor" apart from "they never said", which is the case
+        # that silently lays a 7-inch panel out for a desktop.
 
     network = dict(raw.get("network") or {})
     network.setdefault("subnet_name", "PN_IE_1")

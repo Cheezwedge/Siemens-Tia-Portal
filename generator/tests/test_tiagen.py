@@ -15,7 +15,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "generator"))
 
 from tiagen import build as build_mod  # noqa: E402
-from tiagen import emit_scl, emit_tags, model, validate  # noqa: E402
+from tiagen import emit_hmi, emit_scl, emit_tags, model, validate  # noqa: E402
 from tiagen.model import SpecError  # noqa: E402
 
 
@@ -460,6 +460,32 @@ class TestFullBuild(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for screen in plan["screens"]:
             self.assertTrue(screen["objects"], msg=f"{screen['name']} has no objects")
+
+    def test_unified_basic_panel_is_flagged_for_scripting_and_faceplates(self):
+        spec = spec_from(
+            [{"name": "Conv", "type": "motor_dol"}],
+            hmi={"name": "HMI_1", "order_number": "6AV2128-3MB06-0AX0",
+                 "runtime": "unified_basic", "ip": "192.168.0.10",
+                 "resolution": "800x480"},
+        )
+        _, warnings = validate.check(spec)
+        joined = " ".join(warnings)
+        self.assertIn("no scripting engine", joined)
+        self.assertIn("faceplate instances", joined)
+        plan = emit_hmi.screen_plan(spec)
+        self.assertFalse(plan["scripting"])
+        self.assertEqual(plan["resolution"], {"width": 800, "height": 480})
+
+    def test_missing_resolution_warns_rather_than_defaulting_silently(self):
+        spec = spec_from(
+            [{"name": "Conv", "type": "motor_dol"}],
+            hmi={"name": "HMI_1", "order_number": "6AV2128-3MB06-0AX0",
+                 "ip": "192.168.0.10"},
+        )
+        _, warnings = validate.check(spec)
+        self.assertTrue(any("hmi.resolution is not set" in w for w in warnings))
+        # The default still applies, so a spec without it builds rather than blocking.
+        self.assertEqual(emit_hmi.screen_plan(spec)["resolution"]["width"], 1920)
 
     def test_errors_block_generation_unless_forced(self):
         spec = spec_from([{

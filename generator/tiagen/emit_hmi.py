@@ -174,9 +174,14 @@ def screen_plan(spec: Spec) -> Dict[str, Any]:
     else:
         screens = _derive_screens(spec, width, height)
 
+    runtime = (spec.hmi or {}).get("runtime", "unified")
     return {
         "resolution": {"width": width, "height": height},
-        "runtime": (spec.hmi or {}).get("runtime", "unified"),
+        "runtime": runtime,
+        # Unified Basic panels have no scripting engine. Anything the plan carries that
+        # would need one has to be reachable by configuration alone on that runtime, so
+        # the flag travels with the plan rather than being re-derived downstream.
+        "scripting": runtime not in ("unified_basic",),
         "start_screen": screens[0]["name"] if screens else None,
         "faceplates_required": sorted({
             FACEPLATE[e.type] for e in spec.controlled() if e.type in FACEPLATE

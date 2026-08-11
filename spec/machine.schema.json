@@ -57,7 +57,7 @@
         "order_number": { "type": "string" },
         "firmware": { "type": "string" },
         "ip": { "type": "string" },
-        "runtime": { "type": "string", "enum": ["unified", "comfort"], "default": "unified" },
+        "runtime": { "type": "string", "enum": ["unified", "unified_basic", "comfort"], "default": "unified" },
         "resolution": { "type": "string", "default": "1920x1080" },
         "screens": {
           "type": "array",

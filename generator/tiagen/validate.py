@@ -32,6 +32,7 @@ def check(spec: Spec) -> Tuple[List[str], List[str]]:
     _check_safety(spec, warnings)
     _check_coverage(spec, warnings)
     _check_order_numbers(spec, warnings)
+    _check_hmi(spec, warnings)
 
     return errors, warnings
 
@@ -214,6 +215,36 @@ def _check_coverage(spec: Spec, warnings: List[str]) -> None:
     for eq in spec.equipment:
         if eq.type == "digital_input" and not eq.description:
             warnings.append(f"'{eq.name}' has no description; the tag comment will just repeat the name")
+
+
+def _check_hmi(spec: Spec, warnings: List[str]) -> None:
+    if not spec.hmi:
+        return
+
+    # Every object in the screen plan carries an absolute x/y, so a wrong resolution
+    # does not fail - it silently positions everything for a panel you do not own.
+    if not spec.hmi.get("resolution"):
+        warnings.append(
+            "hmi.resolution is not set, so screens are laid out for 1920x1080. Set it to "
+            "your panel's native resolution - an MTP700 is a 7-inch panel, not a monitor."
+        )
+
+    if spec.hmi.get("runtime") == "unified_basic":
+        warnings.append(
+            "hmi.runtime is unified_basic: Unified Basic panels have no scripting engine, "
+            "so every generated screen must work by configuration alone."
+        )
+        # Openness cannot create faceplate instances on classic Basic Panels. Whether
+        # that limit carries over to Unified Basic decides whether the manual screens
+        # are generated or drawn by hand, so it is called out rather than assumed.
+        if any(e.type in ("motor_dol", "motor_reversing", "vfd_analog",
+                          "valve_single", "valve_double") for e in spec.controlled()):
+            warnings.append(
+                "the manual screens place faceplate instances. Confirm your Unified Basic "
+                "panel accepts them before relying on generated manual screens - Openness "
+                "cannot create faceplate instances on classic Basic Panels, and if the same "
+                "limit applies here the tiles must be built from primitives instead."
+            )
 
 
 def _check_order_numbers(spec: Spec, warnings: List[str]) -> None:
