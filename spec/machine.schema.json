@@ -4,45 +4,100 @@
   "title": "Machine Specification",
   "description": "Declarative description of an industrial machine, from which tiagen generates SCL, tag tables, an HMI plan and an Openness build plan for TIA Portal V21 / S7-1200 G2.",
   "type": "object",
-  "required": ["project", "plc"],
+  "required": [
+    "project",
+    "plc"
+  ],
   "additionalProperties": false,
   "properties": {
     "project": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
-        "author": { "type": "string" },
-        "comment": { "type": "string" },
-        "tia_version": { "type": "string", "default": "V21" },
-        "directory": { "type": "string", "description": "Windows path where the .ap21 project is created" }
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+        },
+        "author": {
+          "type": "string"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "tia_version": {
+          "type": "string",
+          "default": "V21"
+        },
+        "directory": {
+          "type": "string",
+          "description": "Windows path where the .ap21 project is created"
+        }
       }
     },
     "plc": {
       "type": "object",
-      "required": ["name", "order_number"],
+      "required": [
+        "name",
+        "order_number"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "order_number": { "type": "string", "description": "MLFB, e.g. 6ES7214-1AH50-0XB0" },
-        "firmware": { "type": "string", "default": "V1.1" },
-        "ip": { "type": "string" },
-        "subnet_mask": { "type": "string", "default": "255.255.255.0" },
-        "gateway": { "type": "string" },
-        "profinet_name": { "type": "string" },
-        "cycle_ms": { "type": "integer", "minimum": 1, "default": 100 },
+        "name": {
+          "type": "string"
+        },
+        "order_number": {
+          "type": "string",
+          "description": "MLFB, e.g. 6ES7214-1AH50-0XB0"
+        },
+        "firmware": {
+          "type": "string",
+          "default": "V1.1"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "subnet_mask": {
+          "type": "string",
+          "default": "255.255.255.0"
+        },
+        "gateway": {
+          "type": "string"
+        },
+        "profinet_name": {
+          "type": "string"
+        },
+        "cycle_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100
+        },
         "modules": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "order_number", "slot"],
+            "required": [
+              "name",
+              "order_number",
+              "slot"
+            ],
             "additionalProperties": false,
             "properties": {
-              "name": { "type": "string" },
-              "order_number": { "type": "string" },
-              "slot": { "type": "integer", "minimum": 1 },
-              "firmware": { "type": "string" }
+              "name": {
+                "type": "string"
+              },
+              "order_number": {
+                "type": "string"
+              },
+              "slot": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "firmware": {
+                "type": "string"
+              }
             }
           }
         }
@@ -50,27 +105,71 @@
     },
     "hmi": {
       "type": "object",
-      "required": ["name", "order_number"],
+      "required": [
+        "name",
+        "order_number"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "order_number": { "type": "string" },
-        "firmware": { "type": "string" },
-        "ip": { "type": "string" },
-        "runtime": { "type": "string", "enum": ["unified", "unified_basic", "comfort"], "default": "unified" },
-        "resolution": { "type": "string", "default": "1920x1080" },
+        "name": {
+          "type": "string"
+        },
+        "order_number": {
+          "type": "string"
+        },
+        "firmware": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string",
+          "enum": [
+            "unified",
+            "unified_basic",
+            "comfort"
+          ],
+          "default": "unified"
+        },
+        "resolution": {
+          "type": "string",
+          "default": "1920x1080"
+        },
         "screens": {
           "type": "array",
           "description": "Explicit screen list. Omit to let the generator derive screens from equipment.",
           "items": {
             "type": "object",
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "additionalProperties": false,
             "properties": {
-              "name": { "type": "string" },
-              "title": { "type": "string" },
-              "kind": { "type": "string", "enum": ["overview", "manual", "alarms", "trends", "settings", "diagnostics", "custom"] },
-              "equipment": { "type": "array", "items": { "type": "string" } }
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "overview",
+                  "manual",
+                  "alarms",
+                  "trends",
+                  "settings",
+                  "diagnostics",
+                  "custom"
+                ]
+              },
+              "equipment": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -80,32 +179,63 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "subnet_name": { "type": "string", "default": "PN_IE_1" },
+        "subnet_name": {
+          "type": "string",
+          "default": "PN_IE_1"
+        },
         "io_devices": {
           "type": "array",
           "description": "PROFINET IO devices assigned to the PLC's IO system.",
           "items": {
             "type": "object",
-            "required": ["name", "order_number"],
+            "required": [
+              "name",
+              "order_number"
+            ],
             "additionalProperties": false,
             "properties": {
-              "name": { "type": "string" },
-              "order_number": { "type": "string" },
-              "firmware": { "type": "string" },
-              "ip": { "type": "string" },
-              "profinet_name": { "type": "string" },
-              "type_identifier": { "type": "string", "description": "GSD/GSDML identifier when the device is not in the standard catalog" },
+              "name": {
+                "type": "string"
+              },
+              "order_number": {
+                "type": "string"
+              },
+              "firmware": {
+                "type": "string"
+              },
+              "ip": {
+                "type": "string"
+              },
+              "profinet_name": {
+                "type": "string"
+              },
+              "type_identifier": {
+                "type": "string",
+                "description": "GSD/GSDML identifier when the device is not in the standard catalog"
+              },
               "modules": {
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "required": ["name", "order_number", "slot"],
+                  "required": [
+                    "name",
+                    "order_number",
+                    "slot"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "name": { "type": "string" },
-                    "order_number": { "type": "string" },
-                    "slot": { "type": "integer" },
-                    "firmware": { "type": "string" }
+                    "name": {
+                      "type": "string"
+                    },
+                    "order_number": {
+                      "type": "string"
+                    },
+                    "slot": {
+                      "type": "integer"
+                    },
+                    "firmware": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -119,10 +249,26 @@
       "description": "Address allocation policy for automatically assigned I/O.",
       "additionalProperties": false,
       "properties": {
-        "di_start_byte": { "type": "integer", "minimum": 0, "default": 0 },
-        "do_start_byte": { "type": "integer", "minimum": 0, "default": 0 },
-        "ai_start_byte": { "type": "integer", "minimum": 0, "default": 64 },
-        "ao_start_byte": { "type": "integer", "minimum": 0, "default": 64 }
+        "di_start_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "do_start_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "ai_start_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 64
+        },
+        "ao_start_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 64
+        }
       }
     },
     "equipment": {
@@ -130,10 +276,16 @@
       "description": "The machine, described one device at a time. Drives SCL, tags, HMI and alarms.",
       "items": {
         "type": "object",
-        "required": ["name", "type"],
+        "required": [
+          "name",
+          "type"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -150,26 +302,59 @@
               "safety_gate"
             ]
           },
-          "description": { "type": "string" },
-          "area": { "type": "string", "description": "Logical machine area; groups HMI screens and alarm classes" },
-          "address": { "type": "string", "description": "Fixed address override, e.g. %I0.0 / %Q1.2 / %IW64" },
+          "description": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string",
+            "description": "Logical machine area; groups HMI screens and alarm classes"
+          },
+          "address": {
+            "type": "string",
+            "description": "Fixed address override, e.g. %I0.0 / %Q1.2 / %IW64"
+          },
           "signals": {
             "type": "object",
             "description": "Per-signal address overrides keyed by signal role (e.g. run_out, running_fb, fault_fb).",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "options": {
             "type": "object",
             "description": "Type-specific options.",
             "additionalProperties": true,
             "properties": {
-              "normally_closed": { "type": "boolean", "default": false },
-              "has_running_feedback": { "type": "boolean", "default": true },
-              "has_fault_feedback": { "type": "boolean", "default": true },
-              "feedback_timeout_ms": { "type": "integer", "default": 3000 },
-              "travel_timeout_ms": { "type": "integer", "default": 5000 },
-              "runtime_hours": { "type": "boolean", "default": false },
-              "interlock_from": { "type": "array", "items": { "type": "string" } }
+              "normally_closed": {
+                "type": "boolean",
+                "default": false
+              },
+              "has_running_feedback": {
+                "type": "boolean",
+                "default": true
+              },
+              "has_fault_feedback": {
+                "type": "boolean",
+                "default": true
+              },
+              "feedback_timeout_ms": {
+                "type": "integer",
+                "default": 3000
+              },
+              "travel_timeout_ms": {
+                "type": "integer",
+                "default": 5000
+              },
+              "runtime_hours": {
+                "type": "boolean",
+                "default": false
+              },
+              "interlock_from": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           },
           "scaling": {
@@ -177,15 +362,38 @@
             "description": "Analog scaling (raw counts to engineering units).",
             "additionalProperties": false,
             "properties": {
-              "raw_min": { "type": "number", "default": 0 },
-              "raw_max": { "type": "number", "default": 27648 },
-              "eng_min": { "type": "number", "default": 0.0 },
-              "eng_max": { "type": "number", "default": 100.0 },
-              "unit": { "type": "string", "default": "%" },
-              "lo_lo": { "type": "number" },
-              "lo": { "type": "number" },
-              "hi": { "type": "number" },
-              "hi_hi": { "type": "number" }
+              "raw_min": {
+                "type": "number",
+                "default": 0
+              },
+              "raw_max": {
+                "type": "number",
+                "default": 27648
+              },
+              "eng_min": {
+                "type": "number",
+                "default": 0.0
+              },
+              "eng_max": {
+                "type": "number",
+                "default": 100.0
+              },
+              "unit": {
+                "type": "string",
+                "default": "%"
+              },
+              "lo_lo": {
+                "type": "number"
+              },
+              "lo": {
+                "type": "number"
+              },
+              "hi": {
+                "type": "number"
+              },
+              "hi_hi": {
+                "type": "number"
+              }
             }
           }
         }
@@ -194,26 +402,168 @@
     "modes": {
       "type": "array",
       "description": "Machine operating modes. Defaults to Manual + Auto.",
-      "items": { "type": "string", "enum": ["Manual", "Auto", "SemiAuto", "Setup", "Clean"] }
+      "items": {
+        "type": "string",
+        "enum": [
+          "Manual",
+          "Auto",
+          "SemiAuto",
+          "Setup",
+          "Clean"
+        ]
+      }
     },
     "safety": {
       "type": "object",
       "description": "Safety intent. Never auto-authored as F-logic; drives a documented handoff instead.",
       "additionalProperties": false,
       "properties": {
-        "category": { "type": "string", "description": "e.g. PLd Cat3 per ISO 13849-1" },
-        "fail_safe_plc": { "type": "boolean", "default": false },
-        "notes": { "type": "string" }
+        "category": {
+          "type": "string",
+          "description": "e.g. PLd Cat3 per ISO 13849-1"
+        },
+        "fail_safe_plc": {
+          "type": "boolean",
+          "default": false
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     },
     "options": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "block_prefix": { "type": "string", "default": "" },
-        "generate_hmi_tags": { "type": "boolean", "default": true },
-        "generate_alarms": { "type": "boolean", "default": true },
-        "optimized_access": { "type": "boolean", "default": true }
+        "block_prefix": {
+          "type": "string",
+          "default": ""
+        },
+        "generate_hmi_tags": {
+          "type": "boolean",
+          "default": true
+        },
+        "generate_alarms": {
+          "type": "boolean",
+          "default": true
+        },
+        "optimized_access": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "description": "Generated step sequence. Omit it to keep the hand-written AUTO SEQUENCE region.",
+      "required": [
+        "steps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "default": "Cycle",
+          "description": "Becomes part of the sequencer FB name."
+        },
+        "cyclic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Last step returns to the first instead of going idle."
+        },
+        "idle_step": {
+          "type": "integer",
+          "default": 0,
+          "description": "Step number held when auto is not running."
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "step": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Step number. Leave gaps so steps can be inserted later."
+              },
+              "name": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string",
+                "description": "Operator text for this step. Becomes a text-list entry keyed by step number."
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Device requests held while the step is active, e.g. 'Conveyor.start' or 'Vfd.speed = 40'."
+              },
+              "wait_for": {
+                "description": "Conditions to leave the step: a list (all must be true), or {any: [...]}.",
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "any": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "timeout": {
+                "description": "How long the step may hold, e.g. 500ms, 10s, 2m. A bare number is seconds.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "on_timeout": {
+                "type": "string",
+                "enum": [
+                  "fault",
+                  "hold",
+                  "continue"
+                ],
+                "default": "fault"
+              },
+              "next": {
+                "type": "integer",
+                "description": "Step to advance to. Defaults to the next step in the list."
+              }
+            }
+          }
+        }
       }
     }
   }

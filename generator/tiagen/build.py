@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from . import devices as dev
-from . import emit_hmi, emit_plan, emit_scl, emit_tags, validate
+from . import emit_hmi, emit_plan, emit_scl, emit_seq, emit_tags, validate
 from .model import Spec, SpecError
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,8 +69,17 @@ def build(spec: Spec, out_dir: str, library_dir: str = DEFAULT_LIBRARY,
         (f"30_{spec.udt_auto}.scl", emit_scl.emit_udt_auto(spec)),
         (f"31_{spec.udt_cmd}.scl", emit_scl.emit_udt_cmd(spec)),
         (f"32_{spec.udt_alarms}.scl", emit_scl.emit_udt_alarms(spec)),
-        (f"40_{spec.fb_machine}.scl", emit_scl.emit_fb_machine(spec)),
     ]
+    if spec.sequence:
+        # The condition struct and the sequencer are declared by the machine FB, so
+        # both have to be imported before it.
+        machine_sources += [
+            (f"33_{spec.udt_cond}.scl", emit_seq.emit_udt_cond(spec, spec.sequence)),
+            (f"38_{spec.fb_sequence}.scl", emit_seq.emit_fb_sequence(spec, spec.sequence)),
+        ]
+    machine_sources.append(
+        (f"40_{spec.fb_machine}.scl", emit_scl.emit_fb_machine(spec))
+    )
     for name, body in machine_sources:
         relative = f"scl/{name}"
         write(relative, body)
@@ -92,6 +101,9 @@ def build(spec: Spec, out_dir: str, library_dir: str = DEFAULT_LIBRARY,
         write("hmi/alarms.json", emit_hmi.dumps(emit_hmi.alarm_list(spec)))
         write("hmi/screens.json", emit_hmi.dumps(emit_hmi.screen_plan(spec)))
         write("hmi/hmi_tags.csv", _hmi_tags_csv(spec))
+        if spec.sequence:
+            write("hmi/textlists.json",
+                  emit_hmi.dumps(emit_seq.text_lists(spec, spec.sequence)))
 
     # ---- 5. the build plan for the Openness driver ----
     plan = emit_plan.build(spec, source_files + [ob_relative], tables)
@@ -117,6 +129,43 @@ def _hmi_tags_csv(spec: Spec) -> str:
         writer.writerow([tag["table"], tag["name"], tag["datatype"],
                          tag["plc_tag"], tag["access"], tag["comment"]])
     return out.getvalue()
+
+
+def _sequence_report(spec: Spec) -> List[str]:
+    """The step table, so it can be diffed against the spreadsheet it came from."""
+    from . import sequence as seq_mod
+
+    seq = spec.sequence
+    lines = [
+        f"## Sequence `{seq.name}`",
+        "",
+        f"{len(seq.steps)} steps, "
+        + ("cyclic" if seq.cyclic else "single-shot")
+        + f", idle at {seq.idle_number}. Block: `{spec.fb_sequence}`.",
+        "",
+        "| Step | Name | Message | Requests | Waits for | Timeout |",
+        "|---|---|---|---|---|---|",
+    ]
+    for step in seq.steps:
+        requests = ", ".join(f"`{a}`" for a in step.actions) or "-"
+        waits = ", ".join(f"`{c}`" for c in step.wait_for) or "-"
+        if step.wait_for and step.wait_mode == "any":
+            waits = "any of: " + waits
+        timeout = f"{step.timeout_ms} ms ({step.on_timeout})" if step.timeout_ms else "-"
+        lines.append(
+            f"| {step.number} | {step.name} | {step.message} | {requests} | {waits} | {timeout} |"
+        )
+    lines.append("")
+
+    reasons = seq_mod.reasons_of(spec, seq)
+    lines += [
+        f"Operator text comes from two text lists in `hmi/textlists.json`: the step "
+        f"message keyed by `Seq.Step`, and {len(reasons)} blocked-reasons keyed by "
+        "`Seq.BlockedById`. Both are plain value lists, so a panel without scripting "
+        "can resolve them.",
+        "",
+    ]
+    return lines
 
 
 def _report(spec: Spec, tables, plan: Dict, warnings: List[str]) -> str:
@@ -161,6 +210,9 @@ def _report(spec: Spec, tables, plan: Dict, warnings: List[str]) -> str:
     for block in plan["verification"]["expect_blocks"]:
         lines.append(f"- `{block}`")
     lines.append("")
+
+    if spec.sequence:
+        lines += _sequence_report(spec)
 
     if spec.hmi:
         hmi_plan = plan["hmi_software"]

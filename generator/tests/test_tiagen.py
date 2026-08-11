@@ -15,7 +15,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "generator"))
 
 from tiagen import build as build_mod  # noqa: E402
-from tiagen import emit_hmi, emit_scl, emit_tags, model, validate  # noqa: E402
+from tiagen import (  # noqa: E402
+    emit_hmi, emit_scl, emit_seq, emit_tags, import_steps, model, sequence, validate,
+)
 from tiagen.model import SpecError  # noqa: E402
 
 
@@ -487,6 +489,23 @@ class TestFullBuild(unittest.TestCase):
         # The default still applies, so a spec without it builds rather than blocking.
         self.assertEqual(emit_hmi.screen_plan(spec)["resolution"]["width"], 1920)
 
+    def test_sequence_example_builds_with_blocks_in_dependency_order(self):
+        path = os.path.join(REPO_ROOT, "spec", "examples", "step-sequence.yaml")
+        spec, _, out = self._build(path)
+        plan = json.load(open(os.path.join(out, "plan.json")))
+        sources = [s["file"] for s in plan["software"]["external_sources"]]
+
+        def index(block):
+            # Match the whole filename: the machine FB's name is a prefix of the
+            # sequencer's, so a substring test finds the wrong one.
+            return next(i for i, s in enumerate(sources) if s.endswith(f"{block}.scl"))
+
+        # The machine FB declares both, so both must be imported before it.
+        self.assertLess(index(spec.udt_cond), index(spec.fb_machine))
+        self.assertLess(index(spec.fb_sequence), index(spec.fb_machine))
+        self.assertIn(spec.fb_sequence, plan["verification"]["expect_blocks"])
+        self.assertIn(spec.udt_cond, plan["verification"]["expect_blocks"])
+
     def test_errors_block_generation_unless_forced(self):
         spec = spec_from([{
             "name": "M", "type": "motor_dol", "options": {"interlock_from": ["Ghost"]},
@@ -497,6 +516,182 @@ class TestFullBuild(unittest.TestCase):
         self.assertEqual(result.files, [])
         forced = build_mod.build(spec, out_dir=out, force=True)
         self.assertIn("plan.json", forced.files)
+
+
+def seq_spec(steps, **seq_overrides):
+    """A spec with the actuators the sequence tests reference, plus a sequence."""
+    sequence = {"name": "Cycle", "steps": steps}
+    sequence.update(seq_overrides)
+    return spec_from(
+        [
+            {"name": "Conv", "type": "motor_dol", "description": "Infeed conveyor"},
+            {"name": "Clamp", "type": "valve_double", "description": "Part clamp"},
+            {"name": "Drive", "type": "vfd_analog", "description": "Outfeed drive"},
+            {"name": "PartSensor", "type": "digital_input", "description": "Part present"},
+            {"name": "Level", "type": "analog_input", "description": "Tank level"},
+        ],
+        sequence=sequence,
+    )
+
+
+class TestSequence(unittest.TestCase):
+    def test_steps_emit_requests_and_transitions_in_step_order(self):
+        spec = seq_spec([
+            {"step": 1000, "name": "Load", "message": "Loading",
+             "actions": ["Conv.start", "Drive.speed = 25"],
+             "wait_for": ["PartSensor"], "timeout": "5s"},
+            {"step": 1010, "name": "Clamp", "message": "Clamping",
+             "actions": ["Clamp.open"], "wait_for": ["Clamp.opened"], "timeout": "2s"},
+        ])
+        scl = emit_seq.emit_fb_sequence(spec, spec.sequence)
+        self.assertIn("        1000:", scl)
+        self.assertIn("#Auto.Conv_Start := TRUE;", scl)
+        self.assertIn("#Auto.Drive_Speed := 25.0;", scl)
+        self.assertIn("#vPt := T#5000MS;", scl)
+        self.assertIn("#vNext := 1010;", scl)
+        # Cyclic by default: the last step returns to the first and pulses Complete.
+        self.assertIn("#vIsLast := TRUE;", scl)
+        self.assertLess(scl.index("1000:"), scl.index("1010:"))
+
+    def test_a_negated_condition_gets_its_own_blocked_id_and_text(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Raise", "actions": ["Clamp.open"],
+             "wait_for": ["Clamp.opened"], "timeout": "2s"},
+            {"step": 20, "message": "Lower", "actions": ["Clamp.close"],
+             "wait_for": ["not Clamp.opened"], "timeout": "2s"},
+        ])
+        scl = emit_seq.emit_fb_sequence(spec, spec.sequence)
+        reasons = {
+            e["value"]: e["text"]
+            for e in emit_seq.text_lists(spec, spec.sequence)[1]["entries"]
+        }
+        # One Cond bit serves both steps...
+        self.assertEqual(scl.count("Clamp_Opened : Bool"), 0)
+        self.assertIn("#Cond.Clamp_Opened", scl)
+        # ...but the two directions must not share a blocked id, or the panel tells
+        # the operator to wait for the opposite of what is happening.
+        positive = [v for v, t in reasons.items() if t.endswith("(Part clamp)") and "clear" not in t]
+        negative = [v for v, t in reasons.items() if "to clear" in t]
+        self.assertEqual(len(positive), 1)
+        self.assertEqual(len(negative), 1)
+        self.assertNotEqual(positive[0], negative[0])
+
+    def test_the_first_unsatisfied_condition_is_reported_not_the_last(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Wait", "wait_for": ["PartSensor", "Conv.running"],
+             "timeout": "5s"},
+        ])
+        scl = emit_seq.emit_fb_sequence(spec, spec.sequence)
+        # Without the guard every branch overwrites the previous one and the answer
+        # is whichever condition happens to be last in the list.
+        self.assertEqual(scl.count("IF #vBlocked = 0 AND NOT ("), 2)
+
+    def test_analog_comparison_becomes_a_scaled_value_test(self):
+        spec = seq_spec([
+            {"step": 10, "message": "Fill", "wait_for": ["Level.value >= 75"], "timeout": "30s"},
+        ])
+        conditions = sequence.conditions_of(spec, spec.sequence)
+        self.assertEqual(len(conditions), 1)
+        self.assertIn("#Level.Hmi.Act_Value >= 75.0", conditions[0].expression)
+
+    def test_step_message_text_list_is_keyed_by_step_number(self):
+        spec = seq_spec([
+            {"step": 1000, "message": "Loading the part", "wait_for": ["PartSensor"], "timeout": "5s"},
+        ])
+        steps_list = emit_seq.text_lists(spec, spec.sequence)[0]
+        self.assertEqual(steps_list["tag"], f"{spec.db_machine}.Seq.Step")
+        entries = {e["value"]: e["text"] for e in steps_list["entries"]}
+        self.assertEqual(entries[1000], "Loading the part")
+        self.assertIn(0, entries)      # the idle step needs a message too
+
+    def test_unknown_device_and_verb_are_errors_not_bad_scl(self):
+        spec = seq_spec([
+            {"step": 10, "message": "x", "actions": ["Ghost.start"], "timeout": "1s"},
+            {"step": 20, "message": "y", "actions": ["Clamp.accelerate"], "timeout": "1s"},
+            {"step": 30, "message": "z", "wait_for": ["Conv.levitating"], "timeout": "1s"},
+        ])
+        errors, _ = validate.check(spec)
+        joined = " ".join(errors)
+        self.assertIn("'Ghost', which is not in the equipment list", joined)
+        self.assertIn("'accelerate' is not something a valve_double does", joined)
+        self.assertIn("'levitating' is not a device status", joined)
+
+    def test_duplicate_and_dangling_step_numbers_are_errors(self):
+        spec = seq_spec([
+            {"step": 10, "message": "a", "wait_for": ["PartSensor"], "timeout": "1s", "next": 99},
+            {"step": 10, "message": "b", "wait_for": ["PartSensor"], "timeout": "1s"},
+        ])
+        errors, _ = validate.check(spec)
+        joined = " ".join(errors)
+        self.assertIn("step 10 is declared more than once", joined)
+        self.assertIn("next is 99, which is not a step", joined)
+
+    def test_a_wait_with_no_timeout_warns(self):
+        spec = seq_spec([
+            {"step": 10, "message": "a", "wait_for": ["PartSensor"]},
+        ])
+        _, warnings = validate.check(spec)
+        self.assertTrue(any("waits with no timeout" in w for w in warnings))
+
+    def test_analog_value_read_as_a_bit_says_how_to_fix_it(self):
+        with self.assertRaises(sequence.SequenceError) as caught:
+            sequence.resolve_condition(seq_spec([{"step": 1, "message": "x"}]), "Level.value")
+        self.assertIn("Compare it instead", str(caught.exception))
+
+    def test_a_broken_sequence_fails_at_load_like_any_spec_error(self):
+        with self.assertRaises(SpecError) as caught:
+            spec_from([], sequence={"steps": [{"step": 10, "timeout": "soon"}]})
+        self.assertIn("is not a duration", str(caught.exception))
+
+
+class TestStepImport(unittest.TestCase):
+    CSV = (
+        "Step No;Step Name;Operator Message;Actions;Condition;Max time;On timeout\n"
+        "1000;Wait for part;Waiting for a part;Clamp.close, Lift.close;A, B;;\n"
+        "Phase 2 - transfer;;;;;;\n"
+        "1100;Run infeed;Running the infeed;Infeed.start;Infeed.running;5s;fault\n"
+        "1200;Clamp;Clamping;Clamp.open;Clamp.opened;3;\n"
+    )
+
+    def test_headers_rows_and_lists_are_read_from_a_messy_export(self):
+        steps = import_steps.parse_csv(self.CSV)
+        self.assertEqual([s["step"] for s in steps], [1000, 1100, 1200])
+        self.assertEqual(steps[0]["name"], "WaitForPart")
+        self.assertEqual(steps[0]["actions"], ["Clamp.close", "Lift.close"])
+        self.assertEqual(steps[0]["wait_for"], ["A", "B"])
+        self.assertEqual(steps[1]["timeout"], "5s")
+        self.assertEqual(steps[2]["timeout"], "3s")       # a bare number is seconds
+        self.assertEqual(steps[1]["on_timeout"], "fault")
+
+    def test_a_phase_heading_does_not_become_a_step(self):
+        steps = import_steps.parse_csv(self.CSV)
+        self.assertNotIn(2, [s["step"] for s in steps])
+
+    def test_a_shifted_row_is_reported_rather_than_silently_accepted(self):
+        shifted = "Step;Name;Actions;Condition;Max time\n1000;A;X.start;Y;Z\n"
+        with self.assertRaises(import_steps.ImportError_) as caught:
+            import_steps.parse_csv(shifted)
+        self.assertIn("is not a duration", str(caught.exception))
+
+    def test_a_missing_step_column_names_the_columns_it_saw(self):
+        with self.assertRaises(import_steps.ImportError_) as caught:
+            import_steps.parse_csv("Phase,Description\n1,go\n")
+        self.assertIn("Phase", str(caught.exception))
+
+    def test_the_emitted_yaml_round_trips_into_a_usable_sequence(self):
+        import yaml
+
+        body = import_steps.to_yaml(import_steps.parse_csv(self.CSV), name="Main")
+        parsed = yaml.safe_load(body)["sequence"]
+        self.assertEqual(parsed["name"], "Main")
+        self.assertEqual(len(parsed["steps"]), 3)
+        # Quoting has to survive a value containing '=' and a colon.
+        quoted = import_steps.to_yaml(
+            [{"step": 10, "message": "Speed: fast", "actions": ["Drive.speed = 25"]}]
+        )
+        round_tripped = yaml.safe_load(quoted)["sequence"]["steps"][0]
+        self.assertEqual(round_tripped["message"], "Speed: fast")
+        self.assertEqual(round_tripped["actions"], ["Drive.speed = 25"])
 
 
 if __name__ == "__main__":

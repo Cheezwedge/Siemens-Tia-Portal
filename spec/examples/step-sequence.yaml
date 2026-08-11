@@ -1,0 +1,136 @@
+# A small transfer station with a generated step sequence.
+#
+# Step numbers run 1000..2000 in tens, so a step can be inserted between two
+# existing ones without renumbering the table or the operator messages.
+#
+#   python -m tiagen validate ../spec/examples/step-sequence.yaml
+#   python -m tiagen build    ../spec/examples/step-sequence.yaml -o ../out/step-sequence
+
+project:
+  name: TransferStation
+  author: controls
+  directory: C:\TIA\Projects
+
+plc:
+  name: PLC_1
+  order_number: 6ES7214-1AH50-0XB0      # S7-1200 G2, CPU 1214C DC/DC/DC
+  firmware: V1.1
+  ip: 192.168.0.1
+
+hmi:
+  name: HMI_1
+  order_number: REPLACE-WITH-CATALOG-MLFB   # MTP700 Unified Basic - copy from the catalog
+  runtime: unified_basic                    # no scripting engine on this family
+  resolution: 800x480
+  ip: 192.168.0.10
+
+equipment:
+  # ---- safety status (not a safety function - see docs/07) ----
+  - name: EStop
+    type: estop
+    description: E-stop status contact
+  - name: GuardDoor
+    type: safety_gate
+    description: Transfer guard door switch
+
+  # ---- operator controls ----
+  - name: StartPb
+    type: digital_input
+    description: Cycle start pushbutton
+    options: { control_role: start }
+  - name: StopPb
+    type: digital_input
+    description: Cycle stop pushbutton
+    options: { control_role: stop, normally_closed: true }
+  - name: ResetPb
+    type: digital_input
+    description: Fault reset pushbutton
+    options: { control_role: reset }
+
+  # ---- process sensors ----
+  - name: PartPresent
+    type: digital_input
+    description: Part present at infeed
+  - name: PartAtOutfeed
+    type: digital_input
+    description: Part arrived at outfeed
+
+  # ---- actuators ----
+  - name: Infeed
+    type: motor_dol
+    area: Infeed
+    description: Infeed conveyor
+  - name: Clamp
+    type: valve_double
+    area: Transfer
+    description: Part clamp
+  - name: Lift
+    type: valve_single
+    area: Transfer
+    description: Transfer lift
+  - name: Outfeed
+    type: vfd_analog
+    area: Outfeed
+    description: Outfeed conveyor drive
+    scaling: { eng_min: 0.0, eng_max: 50.0, unit: m/min }
+
+sequence:
+  name: Cycle
+  cyclic: true
+  idle_step: 0
+  steps:
+    - step: 1000
+      name: WaitForPart
+      message: Waiting for a part at the infeed
+      actions: [Clamp.close, Lift.close]
+      wait_for: [PartPresent, Clamp.closed]
+
+    - step: 1100
+      name: RunInfeed
+      message: Running infeed to load the part
+      actions: [Infeed.start]
+      wait_for: [Infeed.running]
+      timeout: 5s
+      on_timeout: fault
+
+    - step: 1200
+      name: ClampPart
+      message: Clamping the part
+      actions: [Clamp.open]
+      wait_for: [Clamp.opened]
+      timeout: 3s
+
+    - step: 1300
+      name: RaiseLift
+      message: Raising the transfer lift
+      actions: [Lift.open]
+      wait_for: [Lift.opened]
+      timeout: 4s
+
+    - step: 1400
+      name: TransferOut
+      message: Transferring the part to the outfeed
+      actions: [Outfeed.start, 'Outfeed.speed = 30']
+      wait_for: [PartAtOutfeed]
+      timeout: 20s
+
+    - step: 1500
+      name: ReleasePart
+      message: Releasing the clamp
+      actions: [Clamp.close]
+      wait_for: [Clamp.closed]
+      timeout: 3s
+
+    - step: 1600
+      name: LowerLift
+      message: Lowering the transfer lift
+      actions: [Lift.close]
+      wait_for: [not Lift.opened]
+      timeout: 4s
+
+    - step: 2000
+      name: CycleDone
+      message: Cycle complete - returning to start
+      wait_for: [not PartAtOutfeed]
+      timeout: 30s
+      on_timeout: hold

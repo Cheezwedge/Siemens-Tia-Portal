@@ -178,6 +178,11 @@ def emit_fb_machine(spec: Spec) -> str:
         f"      Alarms : {_q(spec.udt_alarms)};        // alarm bits for the HMI",
         "      DevicesHealthy : Bool := TRUE;     // aggregated at the end of each cycle",
     ]
+    if spec.sequence:
+        lines += [
+            f"      Cond : {_q(spec.udt_cond)};            // resolved step conditions",
+            f"      Seq : {_q(spec.fb_sequence)};          // the generated step sequence",
+        ]
     if controlled:
         lines.append("      // ---- device instances ----")
         width = max(len(e.name) for e in controlled)
@@ -235,7 +240,15 @@ def emit_fb_machine(spec: Spec) -> str:
         "          StopCmd := #Cmd.Stop,",
         f"          StopOk := {stop_expr},",
         f"          ResetCmd := {reset_expr},",
-        "          CycleComplete := FALSE);",
+    ]
+    if spec.sequence:
+        # The sequencer runs later in this cycle, so this is last cycle's pulse.
+        # One cycle late to leave auto is harmless, and it avoids reordering the
+        # mode manager behind the sequence it gates.
+        lines.append("          CycleComplete := #Seq.Complete);")
+    else:
+        lines.append("          CycleComplete := FALSE);")
+    lines += [
         "",
         "    // Momentary HMI commands are consumed once the mode manager has seen them.",
         "    #Cmd.Start := FALSE;",
@@ -253,17 +266,31 @@ def emit_fb_machine(spec: Spec) -> str:
     ]
 
     # ---- 3. auto sequence region ----------------------------------------
+    if spec.sequence:
+        lines += [
+            "    // ==================================================================",
+            "    // 3. AUTO SEQUENCE - generated from the spec's sequence section.",
+            "    //",
+            "    //    The step logic lives in its own FB. Edit the spec and rebuild;",
+            "    //    the hand-written region below is for anything the step table",
+            "    //    cannot express, and runs after the sequencer each cycle.",
+            "    // ==================================================================",
+            "    IF NOT #AutoRun THEN",
+        ]
+    else:
+        lines += [
+            "    // ==================================================================",
+            "    // 3. AUTO SEQUENCE - machine specific, written by hand.",
+            "    //",
+            "    //    Everything above and below this region is generated. Write the",
+            "    //    sequence here by setting members of #Auto, gated on #AutoRun.",
+            "    //    Regenerating the project preserves nothing inside this region,",
+            "    //    so keep the sequence in its own block once it grows: create an",
+            "    //    FB, add it to the spec as a library block and call it from here.",
+            "    // ==================================================================",
+            "    IF NOT #AutoRun THEN",
+        ]
     lines += [
-        "    // ==================================================================",
-        "    // 3. AUTO SEQUENCE - machine specific, written by hand.",
-        "    //",
-        "    //    Everything above and below this region is generated. Write the",
-        "    //    sequence here by setting members of #Auto, gated on #AutoRun.",
-        "    //    Regenerating the project preserves nothing inside this region,",
-        "    //    so keep the sequence in its own block once it grows: create an",
-        "    //    FB, add it to the spec as a library block and call it from here.",
-        "    // ==================================================================",
-        "    IF NOT #AutoRun THEN",
         "        // Auto is not running: drop every auto request so manual mode is clean.",
     ]
     for name, datatype, _ in auto_members(spec):
@@ -271,9 +298,23 @@ def emit_fb_machine(spec: Spec) -> str:
         lines.append(f"        #Auto.{name} := {default};")
     if not auto_members(spec):
         lines.append("        ;   // no auto requests in this spec")
-    lines += ["    END_IF;", "", "    // >>> BEGIN AUTO SEQUENCE >>>"]
-    lines += _sequence_hint(spec)
-    lines += ["    // <<< END AUTO SEQUENCE <<<", ""]
+    lines += ["    END_IF;", ""]
+    if spec.sequence:
+        from . import emit_seq
+        lines += emit_seq.machine_call(spec, spec.sequence)
+        lines += [
+            "    // >>> BEGIN AUTO SEQUENCE >>>",
+            "    // The step table above owns the sequence. Use this region only for",
+            "    // what a step table cannot say - it runs after the sequencer, so an",
+            "    // assignment here overrides the active step's request.",
+            "    ;",
+            "    // <<< END AUTO SEQUENCE <<<",
+            "",
+        ]
+    else:
+        lines += ["    // >>> BEGIN AUTO SEQUENCE >>>"]
+        lines += _sequence_hint(spec)
+        lines += ["    // <<< END AUTO SEQUENCE <<<", ""]
 
     # ---- 4. device calls -------------------------------------------------
     lines += [

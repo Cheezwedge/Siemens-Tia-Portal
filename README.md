@@ -144,6 +144,7 @@ every device type**.
 | [08 Eigen / Copilot vs Claude](docs/08-eigen-copilot-vs-claude.md) | Siemens' AI agent for TIA Portal, what it does, and what Claude can do instead |
 | [09 TIA Add-Ins](docs/09-add-ins.md) | Putting Claude inside TIA Portal's own context menus |
 | [10 A standards system](docs/10-standards-system.md) | Making a house standard executable across a team: conformance checking, ladder, device lists, and where online monitoring actually has to live |
+| [11 Step sequences](docs/11-step-sequences.md) | Generating a step sequencer from a step table, with operator messages and a blocked-reason word |
 | [openness/README.md](openness/README.md) | Building and running the driver |
 
 ---
@@ -177,7 +178,7 @@ Honest about what has been tested, because that matters more than looking finish
 
 | | |
 |---|---|
-| **Generator** | Tested. 54 unit tests over addressing, naming, validation, SCL emission, tag XML well-formedness, and both example specs end to end. `python -m unittest discover -s generator/tests` |
+| **Generator** | Tested. 72 unit tests over addressing, naming, validation, SCL emission, tag XML well-formedness, and both example specs end to end. `python -m unittest discover -s generator/tests` |
 | **SCL library** | Written against S7-1200 SCL and reviewed, **not yet compiled in TIA Portal**. The first `apply` run is the real test; the compiler names any problem and the file it is in. |
 | **Openness driver** | Written against the V21 manual (`21.00.00.00`, 03/2026); **not compiled or run against a real installation** - there is no TIA Portal in the environment this was built in. Every call is individually logged and non-fatal where it can be, so a version difference costs you one item and a clear message rather than the run. Expect to adjust one or two attribute names on first use. Two local resources settle those questions faster than any document: the **TIA Portal Openness Explorer** (Siemens entry 109760816), a live API browser for your own project, and the **Hardware Parameter List** in `...\PublicAPI\V21\HW Parameter description`. |
 | **Order numbers** | The CPU MLFB `6ES7214-1AH50-0XB0` matches Siemens' G2 documentation and distributor listings. **G2 module MLFBs are not shipped** - the example carries a deliberate placeholder the validator flags. Copy yours from the hardware catalog. |

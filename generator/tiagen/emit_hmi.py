@@ -92,6 +92,20 @@ def hmi_tags(spec: Spec) -> List[Dict[str, Any]]:
         {"name": "Machine_AnyFault", "datatype": "Bool", "plc_tag": f"{db}.AnyFault",
          "access": "r", "table": "Machine", "comment": "at least one alarm active"},
     ]
+    if spec.sequence:
+        # The step number and blocked reason are Ints so a Unified Basic panel can
+        # resolve both through a text list, which needs no scripting.
+        tags += [
+            {"name": "Seq_Step", "datatype": "Int", "plc_tag": f"{db}.Seq.Step",
+             "access": "r", "table": "Sequence", "comment": "active step number"},
+            {"name": "Seq_BlockedById", "datatype": "Int", "plc_tag": f"{db}.Seq.BlockedById",
+             "access": "r", "table": "Sequence", "comment": "condition holding the step, 0 = none"},
+            {"name": "Seq_StepTime", "datatype": "Time", "plc_tag": f"{db}.Seq.StepTime",
+             "access": "r", "table": "Sequence", "comment": "time on the active step"},
+            {"name": "Seq_Timeout", "datatype": "Bool", "plc_tag": f"{db}.Seq.Timeout",
+             "access": "r", "table": "Sequence", "comment": "a step exceeded its timeout"},
+        ]
+
     for member in ("Start", "Stop", "Reset", "ReqManual", "ReqAuto"):
         tags.append({
             "name": f"Machine_Cmd_{member}",

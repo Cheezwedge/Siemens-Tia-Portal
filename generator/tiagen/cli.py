@@ -15,7 +15,7 @@ from typing import List
 
 from . import build as build_mod
 from . import devices as dev
-from . import model, validate
+from . import import_steps, model, validate
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -43,6 +43,14 @@ def main(argv: List[str] | None = None) -> int:
     p_exp = sub.add_parser("explain", help="print the I/O and block summary for a spec")
     p_exp.add_argument("spec")
 
+    p_imp = sub.add_parser(
+        "import-steps",
+        help="turn a step spreadsheet (CSV) into the spec's sequence section",
+    )
+    p_imp.add_argument("csv")
+    p_imp.add_argument("-o", "--out", help="write here instead of stdout")
+    p_imp.add_argument("--name", default="Cycle", help="sequence name (default: Cycle)")
+
     args = parser.parse_args(argv)
 
     try:
@@ -54,13 +62,36 @@ def main(argv: List[str] | None = None) -> int:
             return _cmd_explain(args.spec)
         if args.command == "build":
             return _cmd_build(args)
+        if args.command == "import-steps":
+            return _cmd_import_steps(args)
     except model.SpecError as exc:
+        print(f"ERROR   {exc}", file=sys.stderr)
+        return 2
+    except import_steps.ImportError_ as exc:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
     except FileNotFoundError as exc:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
     return 1
+
+
+def _cmd_import_steps(args) -> int:
+    with open(args.csv, "r", encoding="utf-8-sig", newline="") as fh:
+        text = fh.read()
+    steps = import_steps.parse_csv(text)
+    body = import_steps.to_yaml(steps, args.name)
+
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        print(f"{len(steps)} steps -> {args.out}")
+        print("Paste it into the spec, or append it if the spec has no sequence yet.")
+        print("Then: python -m tiagen validate <spec>   - every action and condition is")
+        print("checked against the equipment list, so typos surface now rather than in TIA.")
+    else:
+        print(body, end="")
+    return 0
 
 
 def _cmd_types() -> int:

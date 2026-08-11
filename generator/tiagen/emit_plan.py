@@ -218,7 +218,19 @@ def _hmi_software(spec: Spec) -> Dict[str, Any]:
         ],
         "start_screen": plan["start_screen"],
         "alarms": emit_hmi.alarm_list(spec),
+        # Carried in the plan so the step texts are reviewable and diffable with
+        # everything else. The driver has no stage that applies them yet, so today
+        # they are imported by hand - see docs/11.
+        "text_lists": _text_lists(spec),
     }
+
+
+def _text_lists(spec: Spec) -> List[Dict[str, Any]]:
+    if not spec.sequence:
+        return []
+    from . import emit_seq
+
+    return emit_seq.text_lists(spec, spec.sequence)
 
 
 def _ob_source_name(spec: Spec, source_files: List[str]) -> str:
@@ -233,6 +245,8 @@ def _expected_blocks(spec: Spec) -> List[str]:
 
     blocks = ["UDT_DevIf", "FB_ModeManager"]
     blocks += sorted({e.typedef.fb for e in spec.controlled() if e.typedef.fb})
-    blocks += [spec.udt_auto, spec.udt_alarms, spec.udt_cmd,
-               spec.fb_machine, spec.db_machine, spec.ob_main]
+    blocks += [spec.udt_auto, spec.udt_alarms, spec.udt_cmd]
+    if spec.sequence:
+        blocks += [spec.udt_cond, spec.fb_sequence]
+    blocks += [spec.fb_machine, spec.db_machine, spec.ob_main]
     return blocks

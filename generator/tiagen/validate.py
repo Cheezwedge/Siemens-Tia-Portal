@@ -12,6 +12,7 @@ import re
 from typing import List, Tuple
 
 from . import devices as dev
+from . import sequence
 from .model import Spec
 
 # Siemens MLFB, e.g. 6ES7214-1AH50-0XB0, 6ES7 510-1DJ01-0AB0, 6AV2128-3MB06-0AX0:
@@ -33,6 +34,7 @@ def check(spec: Spec) -> Tuple[List[str], List[str]]:
     _check_coverage(spec, warnings)
     _check_order_numbers(spec, warnings)
     _check_hmi(spec, warnings)
+    _check_sequence(spec, errors, warnings)
 
     return errors, warnings
 
@@ -215,6 +217,86 @@ def _check_coverage(spec: Spec, warnings: List[str]) -> None:
     for eq in spec.equipment:
         if eq.type == "digital_input" and not eq.description:
             warnings.append(f"'{eq.name}' has no description; the tag comment will just repeat the name")
+
+
+def _check_sequence(spec: Spec, errors: List[str], warnings: List[str]) -> None:
+    seq = spec.sequence
+    if seq is None:
+        return
+
+    numbers = [s.number for s in seq.steps]
+    duplicates = sorted({n for n in numbers if numbers.count(n) > 1})
+    for number in duplicates:
+        errors.append(f"sequence: step {number} is declared more than once")
+
+    if numbers != sorted(numbers):
+        warnings.append(
+            "sequence: step numbers are not in ascending order. The generated CASE "
+            "follows the spec's order, so the block will not read in step order."
+        )
+
+    # Every reference has to resolve, or the generated SCL will not compile. Report
+    # them all rather than stopping at the first - one pass should list every typo.
+    for step in seq.steps:
+        for text in step.actions:
+            try:
+                sequence.resolve_action(spec, text)
+            except sequence.SequenceError as exc:
+                errors.append(f"sequence step {step.number}: {exc}")
+        for text in step.wait_for:
+            try:
+                sequence.resolve_condition(spec, text)
+            except sequence.SequenceError as exc:
+                errors.append(f"sequence step {step.number}: {exc}")
+
+    # A step that can be left has an exit; one that cannot will sit there forever.
+    for step in seq.steps:
+        if not step.wait_for and step.timeout_ms is None:
+            warnings.append(
+                f"sequence step {step.number} ({step.name}) has no wait_for and no "
+                "timeout, so it advances the cycle after it is entered. That is only "
+                "right for a step whose actions need no confirmation."
+            )
+        if step.wait_for and step.timeout_ms is None:
+            warnings.append(
+                f"sequence step {step.number} ({step.name}) waits with no timeout, so a "
+                "failure to reach the condition looks identical to a slow machine. Give "
+                "it a timeout unless the wait is genuinely unbounded."
+            )
+        if step.next_number is not None and seq.by_number(step.next_number) is None:
+            errors.append(
+                f"sequence step {step.number}: next is {step.next_number}, which is not "
+                "a step in this sequence"
+            )
+
+    # Reachability, following explicit next links and list order.
+    reachable = {seq.steps[0].number}
+    frontier = [seq.steps[0]]
+    while frontier:
+        step = frontier.pop()
+        successor = seq.successor(step)
+        if successor is not None and successor not in reachable:
+            reachable.add(successor)
+            target = seq.by_number(successor)
+            if target is not None:
+                frontier.append(target)
+    for step in seq.steps:
+        if step.number not in reachable:
+            warnings.append(
+                f"sequence step {step.number} ({step.name}) is unreachable: nothing "
+                "advances to it. A step reached only from the hand-written region is fine; "
+                "otherwise it is a gap in the table."
+            )
+
+    if not seq.cyclic:
+        warnings.append(
+            "sequence: cyclic is false, so the last step returns to idle and the machine "
+            "needs a fresh start command for every cycle"
+        )
+
+    for step in seq.steps:
+        if not step.message.strip():
+            errors.append(f"sequence step {step.number} has an empty message")
 
 
 def _check_hmi(spec: Spec, warnings: List[str]) -> None:

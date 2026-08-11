@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from . import devices as dev
+from . import sequence as sequence_mod
 
 IDENT_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 BIT_ADDR_RE = re.compile(r"^%(?P<pfx>[IQ])(?P<byte>\d+)\.(?P<bit>[0-7])$")
@@ -93,6 +94,7 @@ class Spec:
     modes: List[str]
     safety: Dict[str, Any]
     options: Dict[str, Any]
+    sequence: Optional["sequence_mod.Sequence"] = None
     warnings: List[str] = field(default_factory=list)
 
     # ---- derived names ---------------------------------------------------
@@ -123,6 +125,15 @@ class Spec:
     @property
     def udt_cmd(self) -> str:
         return f"{self.prefix}UDT_{self.machine}Cmd"
+
+    @property
+    def udt_cond(self) -> str:
+        return f"{self.prefix}UDT_{self.machine}Cond"
+
+    @property
+    def fb_sequence(self) -> str:
+        name = self.sequence.name if self.sequence else "Cycle"
+        return f"{self.prefix}FB_{self.machine}{name}"
 
     @property
     def ob_main(self) -> str:
@@ -292,6 +303,13 @@ def from_dict(raw: Dict[str, Any]) -> Spec:
 
     equipment = [_equipment_from_dict(e, i) for i, e in enumerate(raw.get("equipment") or [])]
 
+    # A structurally broken sequence fails here, with every other spec error, rather
+    # than surfacing as odd SCL three stages later.
+    try:
+        parsed_sequence = sequence_mod.parse(raw.get("sequence"))
+    except sequence_mod.SequenceError as exc:
+        raise SpecError(str(exc)) from exc
+
     spec = Spec(
         project=project,
         plc=plc,
@@ -302,6 +320,7 @@ def from_dict(raw: Dict[str, Any]) -> Spec:
         modes=modes,
         safety=safety,
         options=options,
+        sequence=parsed_sequence,
     )
     _allocate_addresses(spec)
     return spec
