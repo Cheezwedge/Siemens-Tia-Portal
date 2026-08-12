@@ -1,0 +1,152 @@
+// VFD driven by a hardwired run output and an analog speed reference.
+//
+// Engineering units are scaled to raw counts here, and the setpoint is clamped, so a
+// spec value outside the drive's range cannot be written. The reference is zeroed
+// whenever the drive is not commanded, so a stale setpoint cannot start a ramp.
+FUNCTION_BLOCK "FB_Vfd"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Enable : Bool;
+      Interlock : Bool := TRUE;
+      AutoStart : Bool;
+      AutoStop : Bool;
+      AutoSpeed : Real;                  // auto-mode setpoint, engineering units
+      ManualMode : Bool;
+      GroupReset : Bool;
+      RunningFb : Bool;
+      FaultFb : Bool;
+      UseRunningFb : Bool := TRUE;
+      UseFaultFb : Bool := TRUE;
+      FbTimeout : Time := T#5S;
+      SpeedMin : Real := 0.0;            // engineering units at RawMin
+      SpeedMax : Real := 100.0;          // engineering units at RawMax
+      RawMin : Real := 0.0;              // analog output counts at SpeedMin
+      RawMax : Real := 27648.0;          // analog output counts at SpeedMax
+   END_VAR
+
+   VAR_OUTPUT
+      RunOut : Bool;                     // drive enable / run
+      SpeedRaw : Int;                    // to the analog output word
+      Running : Bool;
+      Fault : Bool;
+      FaultCode : Int;
+      SpeedSp : Real;                    // active setpoint, engineering units
+   END_VAR
+
+   VAR
+      Hmi : "UDT_DevIf";
+      FbOnTimer : TON_TIME;
+      Cmd : Bool;
+      FaultLatch : Bool;
+      FaultCodeLatch : Int;
+      Span : Real;
+      RawReal : Real;
+   END_VAR
+
+BEGIN
+    // ------------------------------------------------------------------
+    // 1. Faults
+    // ------------------------------------------------------------------
+    IF #UseFaultFb AND #FaultFb THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 1;
+    END_IF;
+
+    #FbOnTimer(IN := #RunOut AND #UseRunningFb AND NOT #RunningFb,
+               PT := #FbTimeout);
+    IF #FbOnTimer.Q THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 2;
+    END_IF;
+
+    IF #GroupReset OR #Hmi.Cmd_Reset THEN
+        IF NOT (#UseFaultFb AND #FaultFb) THEN
+            #FaultLatch := FALSE;
+            #FaultCodeLatch := 0;
+        END_IF;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 2. Run command
+    // ------------------------------------------------------------------
+    IF #ManualMode THEN
+        IF #Hmi.Cmd_Start THEN
+            #Cmd := TRUE;
+        END_IF;
+        IF #Hmi.Cmd_Stop THEN
+            #Cmd := FALSE;
+        END_IF;
+    ELSE
+        IF #AutoStart THEN
+            #Cmd := TRUE;
+        END_IF;
+        IF #AutoStop THEN
+            #Cmd := FALSE;
+        END_IF;
+    END_IF;
+
+    IF NOT #Enable OR NOT #Interlock OR #FaultLatch THEN
+        #Cmd := FALSE;
+    END_IF;
+
+    #RunOut := #Cmd;
+
+    // ------------------------------------------------------------------
+    // 3. Setpoint selection and clamping
+    // ------------------------------------------------------------------
+    IF #ManualMode THEN
+        #SpeedSp := #Hmi.Set_Value;
+    ELSE
+        #SpeedSp := #AutoSpeed;
+    END_IF;
+
+    IF #SpeedSp < #SpeedMin THEN
+        #SpeedSp := #SpeedMin;
+    END_IF;
+    IF #SpeedSp > #SpeedMax THEN
+        #SpeedSp := #SpeedMax;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 4. Engineering units -> analog output counts
+    // ------------------------------------------------------------------
+    #Span := #SpeedMax - #SpeedMin;
+    IF #Span = 0.0 THEN
+        #RawReal := #RawMin;                           // degenerate configuration
+    ELSE
+        #RawReal := #RawMin + (#SpeedSp - #SpeedMin) * (#RawMax - #RawMin) / #Span;
+    END_IF;
+
+    IF NOT #Cmd THEN
+        #RawReal := #RawMin;                           // no run command -> zero speed
+    END_IF;
+
+    #SpeedRaw := REAL_TO_INT(#RawReal);
+
+    // ------------------------------------------------------------------
+    // 5. Status
+    // ------------------------------------------------------------------
+    IF #UseRunningFb THEN
+        #Running := #RunningFb;
+    ELSE
+        #Running := #RunOut;
+    END_IF;
+
+    #Fault := #FaultLatch;
+    #FaultCode := #FaultCodeLatch;
+
+    #Hmi.Sts_Cmd := #RunOut;
+    #Hmi.Sts_Running := #Running;
+    #Hmi.Sts_Stopped := NOT #Running;
+    #Hmi.Sts_Fault := #FaultLatch;
+    #Hmi.Sts_FaultCode := #FaultCodeLatch;
+    #Hmi.Sts_Interlocked := NOT #Interlock;
+    #Hmi.Sts_Enabled := #Enable;
+    #Hmi.Sts_ManualMode := #ManualMode;
+    #Hmi.Act_Value := #SpeedSp;
+
+    #Hmi.Cmd_Start := FALSE;
+    #Hmi.Cmd_Stop := FALSE;
+    #Hmi.Cmd_Reset := FALSE;
+END_FUNCTION_BLOCK

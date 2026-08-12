@@ -1,0 +1,129 @@
+// Direct-on-line motor: one run output, with optional running and fault feedback.
+//
+// Faults latch and need an acknowledge that refuses to clear while the cause is still
+// present. Three causes are distinguished so the HMI can say which: an overload
+// contact, a commanded motor with no running feedback, and feedback present with no
+// command - the last of which catches a welded contactor.
+FUNCTION_BLOCK "FB_Motor"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Enable : Bool;                     // permissive from mode manager / safety
+      Interlock : Bool := TRUE;          // process interlock, TRUE = allowed to run
+      AutoStart : Bool;                  // auto-mode start request (level)
+      AutoStop : Bool;                   // auto-mode stop request (level)
+      ManualMode : Bool;                 // TRUE = HMI commands are in control
+      GroupReset : Bool;                 // machine-wide fault acknowledge
+      RunningFb : Bool;                  // aux contact / running feedback
+      FaultFb : Bool;                    // overload / drive fault contact
+      UseRunningFb : Bool := TRUE;       // FALSE = no running feedback wired
+      UseFaultFb : Bool := TRUE;         // FALSE = no fault contact wired
+      FbTimeout : Time := T#3S;          // running feedback supervision time
+   END_VAR
+
+   VAR_OUTPUT
+      RunOut : Bool;                     // to the contactor / drive run input
+      Running : Bool;
+      Fault : Bool;
+      FaultCode : Int;
+   END_VAR
+
+   VAR
+      Hmi : "UDT_DevIf";                 // HMI interface, see UDT_DevIf.scl
+      FbOnTimer : TON_TIME;
+      FbOffTimer : TON_TIME;
+      Cmd : Bool;                        // latched run command
+      FaultLatch : Bool;
+      FaultCodeLatch : Int;
+   END_VAR
+
+BEGIN
+    // ------------------------------------------------------------------
+    // 1. Fault detection
+    // ------------------------------------------------------------------
+    IF #UseFaultFb AND #FaultFb THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 1;                          // external fault / overload
+    END_IF;
+
+    // Commanded but no feedback within FbTimeout.
+    #FbOnTimer(IN := #RunOut AND #UseRunningFb AND NOT #RunningFb,
+               PT := #FbTimeout);
+    IF #FbOnTimer.Q THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 2;                          // feedback timeout
+    END_IF;
+
+    // Feedback present although nothing is commanded (welded contactor).
+    #FbOffTimer(IN := NOT #RunOut AND #UseRunningFb AND #RunningFb,
+                PT := #FbTimeout);
+    IF #FbOffTimer.Q THEN
+        #FaultLatch := TRUE;
+        #FaultCodeLatch := 3;                          // unexpected feedback
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 2. Fault acknowledge - only clears once the cause is gone
+    // ------------------------------------------------------------------
+    IF #GroupReset OR #Hmi.Cmd_Reset THEN
+        IF NOT (#UseFaultFb AND #FaultFb) THEN
+            #FaultLatch := FALSE;
+            #FaultCodeLatch := 0;
+        END_IF;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 3. Command source: HMI in manual, sequence in auto
+    // ------------------------------------------------------------------
+    IF #ManualMode THEN
+        IF #Hmi.Cmd_Start THEN
+            #Cmd := TRUE;
+        END_IF;
+        IF #Hmi.Cmd_Stop THEN
+            #Cmd := FALSE;
+        END_IF;
+    ELSE
+        IF #AutoStart THEN
+            #Cmd := TRUE;
+        END_IF;
+        IF #AutoStop THEN
+            #Cmd := FALSE;
+        END_IF;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 4. Permissives - anything missing drops the command
+    // ------------------------------------------------------------------
+    IF NOT #Enable OR NOT #Interlock OR #FaultLatch THEN
+        #Cmd := FALSE;
+    END_IF;
+
+    #RunOut := #Cmd;
+
+    // ------------------------------------------------------------------
+    // 5. Status
+    // ------------------------------------------------------------------
+    IF #UseRunningFb THEN
+        #Running := #RunningFb;
+    ELSE
+        #Running := #RunOut;
+    END_IF;
+
+    #Fault := #FaultLatch;
+    #FaultCode := #FaultCodeLatch;
+
+    #Hmi.Sts_Cmd := #RunOut;
+    #Hmi.Sts_Running := #Running;
+    #Hmi.Sts_Stopped := NOT #Running;
+    #Hmi.Sts_Fault := #FaultLatch;
+    #Hmi.Sts_FaultCode := #FaultCodeLatch;
+    #Hmi.Sts_Interlocked := NOT #Interlock;
+    #Hmi.Sts_Enabled := #Enable;
+    #Hmi.Sts_ManualMode := #ManualMode;
+    #Hmi.Sts_Simulated := NOT #UseRunningFb;
+
+    // Momentary HMI buttons are consumed here, after they have been evaluated.
+    #Hmi.Cmd_Start := FALSE;
+    #Hmi.Cmd_Stop := FALSE;
+    #Hmi.Cmd_Reset := FALSE;
+END_FUNCTION_BLOCK

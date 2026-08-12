@@ -1,0 +1,114 @@
+// Scaled analog measurement with range check, filtering and four limits.
+//
+// The range check runs BEFORE scaling, deliberately: a broken wire reads as an
+// out-of-range count, and scaling it first would turn that into a plausible
+// engineering value that nothing downstream could tell was wrong.
+FUNCTION_BLOCK "FB_AnalogIn"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT
+      Raw : Int;                         // from the analog input word
+      RawMin : Real := 0.0;              // counts at EngMin (0 for 0..10V, 5530 for 4..20mA span start)
+      RawMax : Real := 27648.0;          // counts at EngMax
+      EngMin : Real := 0.0;
+      EngMax : Real := 100.0;
+      LimitLoLo : Real := 0.0;
+      LimitLo : Real := 0.0;
+      LimitHi : Real := 0.0;
+      LimitHiHi : Real := 0.0;
+      UseLimits : Bool := FALSE;
+      FilterFactor : Real := 0.2;        // 1.0 = no filter, 0.1 = heavy first-order filter
+      GroupReset : Bool;
+      RawUnderRange : Int := -4864;      // S7 analog under-range threshold
+      RawOverRange : Int := 32511;       // S7 analog over-range threshold
+   END_VAR
+
+   VAR_OUTPUT
+      Value : Real;                      // filtered value, engineering units
+      Raw_OutOfRange : Bool;             // wire break / sensor fault
+      AlmLoLo : Bool;
+      AlmLo : Bool;
+      AlmHi : Bool;
+      AlmHiHi : Bool;
+      Fault : Bool;
+      FaultCode : Int;
+   END_VAR
+
+   VAR
+      Hmi : "UDT_DevIf";
+      Unfiltered : Real;
+      Span : Real;
+      Initialised : Bool;
+      FaultLatch : Bool;
+   END_VAR
+
+BEGIN
+    // ------------------------------------------------------------------
+    // 1. Range check first - a broken wire must not produce a plausible value
+    // ------------------------------------------------------------------
+    #Raw_OutOfRange := (#Raw <= #RawUnderRange) OR (#Raw >= #RawOverRange);
+
+    IF #Raw_OutOfRange THEN
+        #FaultLatch := TRUE;
+    END_IF;
+
+    IF #GroupReset OR #Hmi.Cmd_Reset THEN
+        IF NOT #Raw_OutOfRange THEN
+            #FaultLatch := FALSE;
+        END_IF;
+    END_IF;
+
+    #Fault := #FaultLatch;
+    IF #FaultLatch THEN
+        #FaultCode := 6;                               // signal out of range
+    ELSE
+        #FaultCode := 0;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 2. Scale counts -> engineering units
+    // ------------------------------------------------------------------
+    #Span := #RawMax - #RawMin;
+    IF #Span = 0.0 THEN
+        #Unfiltered := #EngMin;
+    ELSE
+        #Unfiltered := #EngMin
+                       + (INT_TO_REAL(#Raw) - #RawMin) * (#EngMax - #EngMin) / #Span;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 3. First-order filter (skipped on the first cycle to avoid a ramp-in)
+    // ------------------------------------------------------------------
+    IF NOT #Initialised THEN
+        #Value := #Unfiltered;
+        #Initialised := TRUE;
+    ELSIF #FilterFactor >= 1.0 OR #FilterFactor <= 0.0 THEN
+        #Value := #Unfiltered;
+    ELSE
+        #Value := #Value + #FilterFactor * (#Unfiltered - #Value);
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 4. Limit monitoring
+    // ------------------------------------------------------------------
+    IF #UseLimits AND NOT #Raw_OutOfRange THEN
+        #AlmLoLo := #Value <= #LimitLoLo;
+        #AlmLo := #Value <= #LimitLo;
+        #AlmHi := #Value >= #LimitHi;
+        #AlmHiHi := #Value >= #LimitHiHi;
+    ELSE
+        #AlmLoLo := FALSE;
+        #AlmLo := FALSE;
+        #AlmHi := FALSE;
+        #AlmHiHi := FALSE;
+    END_IF;
+
+    // ------------------------------------------------------------------
+    // 5. HMI interface
+    // ------------------------------------------------------------------
+    #Hmi.Act_Value := #Value;
+    #Hmi.Sts_Fault := #FaultLatch;
+    #Hmi.Sts_FaultCode := #FaultCode;
+    #Hmi.Sts_Warning := #AlmLo OR #AlmHi;
+    #Hmi.Cmd_Reset := FALSE;
+END_FUNCTION_BLOCK

@@ -1,0 +1,22 @@
+Table,Name,DataType,Address,Comment
+Inputs,EStop_Ok,Bool,%I0.0,"E-stop status contact - E-stop status contact (NC, TRUE = released)"
+Inputs,GuardDoor_Ok,Bool,%I0.1,"Transfer guard door switch - guard status contact (NC, TRUE = closed)"
+Inputs,StartPb,Bool,%I0.2,Cycle start pushbutton
+Inputs,StopPb,Bool,%I0.3,Cycle stop pushbutton
+Inputs,ResetPb,Bool,%I0.4,Fault reset pushbutton
+Inputs,PartPresent,Bool,%I0.5,Part present at infeed
+Inputs,PartAtOutfeed,Bool,%I0.6,Part arrived at outfeed
+Inputs,Infeed_Running,Bool,%I0.7,Infeed conveyor - aux contact
+Inputs,Infeed_Fault,Bool,%I1.0,Infeed conveyor - overload contact
+Inputs,Clamp_Opened,Bool,%I1.1,Part clamp - open limit switch
+Inputs,Clamp_Closed,Bool,%I1.2,Part clamp - closed limit switch
+Inputs,Lift_Opened,Bool,%I1.3,Transfer lift - open limit switch
+Inputs,Lift_Closed,Bool,%I1.4,Transfer lift - closed limit switch
+Inputs,Outfeed_Running,Bool,%I1.5,Outfeed conveyor drive - drive running
+Inputs,Outfeed_Fault,Bool,%I1.6,Outfeed conveyor drive - drive fault
+Outputs,Infeed_Run,Bool,%Q0.0,Infeed conveyor - contactor coil
+Outputs,Clamp_Open,Bool,%Q0.1,Part clamp - open coil
+Outputs,Clamp_Close,Bool,%Q0.2,Part clamp - close coil
+Outputs,Lift_Open,Bool,%Q0.3,Transfer lift - solenoid coil
+Outputs,Outfeed_Run,Bool,%Q0.4,Outfeed conveyor drive - drive run/enable
+AnalogOutputs,Outfeed_Speed,Int,%QW64,Outfeed conveyor drive - speed reference
