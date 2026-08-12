@@ -201,6 +201,21 @@ cosmetically from earlier versions even for unchanged blocks - relevant if you d
 
 Which brings us to the rule:
 
+### What the GUI actually offers (V21 Upd1, verified)
+
+Checked on a real install, because it changes who needs the driver. Right-clicking a
+block in the project tree offers **no "Export" item at all**. The only export-shaped
+entry is **"Generate source from blocks"**, with a submenu. There is no SimaticML XML
+export in the GUI.
+
+That is worth knowing before planning any workflow around exports: **SimaticML is an
+Openness-only format in practice.** You cannot hand an engineer a menu path that produces
+it, so anything built on reading XML needs the driver, or an Add-In, running against the
+project.
+
+The consequence for the rule in this section stands and gets sharper: to obtain your own
+export as a schema template, you must go through the API. There is no manual fallback.
+
 ### Adopting your own export as the template
 
 **Never hand-write SimaticML from documentation. Export one real object from your own
