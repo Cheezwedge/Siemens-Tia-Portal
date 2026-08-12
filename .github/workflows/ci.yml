@@ -1,0 +1,83 @@
+name: CI
+
+# Everything here runs on Linux, without TIA Portal. That covers the generator and
+# the house rules - which is most of the standard.
+#
+# The one thing it cannot do is compile. A green run here means the spec is sound,
+# the emitters behave, and the output conforms to rules.yaml; it does not mean the
+# SCL is valid. Only TIA says that, which needs a self-hosted Windows runner with a
+# licensed install - see docs/10 §4.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generator:
+    name: Tests, validate, build, lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r generator/requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s generator/tests -v
+
+      # Warnings are printed rather than suppressed. They are written to be read, and
+      # the build log is where somebody reviewing a pull request will read them.
+      - name: Validate every example spec
+        run: |
+          status=0
+          for spec in spec/examples/*.yaml; do
+            echo "::group::validate $spec"
+            python -m tiagen validate "../$spec" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+        working-directory: generator
+
+      - name: Build every example spec
+        run: |
+          for spec in ../spec/examples/*.yaml; do
+            name=$(basename "$spec" .yaml)
+            echo "::group::build $name"
+            python -m tiagen build "$spec" -o "../out/$name"
+            echo "::endgroup::"
+          done
+        working-directory: generator
+
+      # The generator's own output must satisfy the house rules. If it does not, one
+      # of the two is wrong - and this is the step that says so before a human has to.
+      - name: Lint the generated output
+        run: |
+          status=0
+          for dir in ../out/*/scl; do
+            echo "::group::lint $dir"
+            python -m tiagen lint "$dir" --min-severity warning || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+        working-directory: generator
+
+      - name: Rule catalogue
+        run: python -m tiagen lint --list
+        working-directory: generator
+
+      # Kept for review: the artefacts a reviewer would otherwise have to generate
+      # themselves to see what a spec change did to the emitted code.
+      - name: Upload generated artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-output
+          path: out/
+          retention-days: 14
