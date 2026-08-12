@@ -202,3 +202,27 @@ It is also still SCL, not ladder. The transition conditions are the part worth h
 LAD, and generating them means emitting `.s7dcl` - see
 [docs/10](10-standards-system.md#02-ladder-and-scl-split-it-deliberately) for the spike
 that decides whether that is worth doing.
+
+---
+
+## Verification
+
+The generated sequencer has been **compiled in TIA Portal V21** (build
+`V21.00.01.00_00.04.00.01`) on an S7-1200 G2, imported as an external source:
+`0 errors, 0 warnings`, and the project compiles clean end to end including the
+instance DB and OB1.
+
+That settles the four things most likely to have been wrong, and they were all guesses
+until it ran:
+
+- `TON_TIME` is the right timer type on an S7-1200 (it matches the library blocks)
+- `Array[0..N] of Time` is valid as a static in an optimized-access FB
+- a `UDT` passed as `VAR_INPUT` compiles - it did not need to be `VAR_IN_OUT`
+- the `FOR` loop, the `CASE` over step numbers and the `TIME` comparisons are all fine
+
+One ordering lesson worth keeping, learned by getting it wrong: **the PLC tags must
+exist before the machine FB is generated.** The machine FB is the only block that
+references global tags, so importing it into a project with no tag table produces one
+"Tag not defined" error per signal. Nothing is wrong with the code; the dependency
+simply is not there. The `apply` pipeline gets this right - `create_tag_tables` runs
+before `import_sources` - but doing it by hand invites the mistake.
