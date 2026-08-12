@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Engineering version="V21" />
+  <DocumentInfo>
+    <Created>2026-08-11T14:59:46Z</Created>
+    <ExportSetting>WithDefaults</ExportSetting>
+  </DocumentInfo>
+  <SW.Tags.PlcTagTable ID="0">
+    <AttributeList>
+      <Name>Outputs</Name>
+    </AttributeList>
+    <ObjectList>
+      <SW.Tags.PlcTag ID="1" CompositionName="Tags">
+        <AttributeList>
+          <DataTypeName>Bool</DataTypeName>
+          <ExternalAccessible>true</ExternalAccessible>
+          <ExternalVisible>true</ExternalVisible>
+          <ExternalWritable>true</ExternalWritable>
+          <LogicalAddress>%Q0.0</LogicalAddress>
+          <Name>Infeed_Run</Name>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="2" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="3" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Infeed conveyor - contactor coil</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Tags.PlcTag>
+      <SW.Tags.PlcTag ID="4" CompositionName="Tags">
+        <AttributeList>
+          <DataTypeName>Bool</DataTypeName>
+          <ExternalAccessible>true</ExternalAccessible>
+          <ExternalVisible>true</ExternalVisible>
+          <ExternalWritable>true</ExternalWritable>
+          <LogicalAddress>%Q0.1</LogicalAddress>
+          <Name>Clamp_Open</Name>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="5" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="6" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Part clamp - open coil</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Tags.PlcTag>
+      <SW.Tags.PlcTag ID="7" CompositionName="Tags">
+        <AttributeList>
+          <DataTypeName>Bool</DataTypeName>
+          <ExternalAccessible>true</ExternalAccessible>
+          <ExternalVisible>true</ExternalVisible>
+          <ExternalWritable>true</ExternalWritable>
+          <LogicalAddress>%Q0.2</LogicalAddress>
+          <Name>Clamp_Close</Name>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="8" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="9" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Part clamp - close coil</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Tags.PlcTag>
+      <SW.Tags.PlcTag ID="10" CompositionName="Tags">
+        <AttributeList>
+          <DataTypeName>Bool</DataTypeName>
+          <ExternalAccessible>true</ExternalAccessible>
+          <ExternalVisible>true</ExternalVisible>
+          <ExternalWritable>true</ExternalWritable>
+          <LogicalAddress>%Q0.3</LogicalAddress>
+          <Name>Lift_Open</Name>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="11" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="12" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Transfer lift - solenoid coil</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Tags.PlcTag>
+      <SW.Tags.PlcTag ID="13" CompositionName="Tags">
+        <AttributeList>
+          <DataTypeName>Bool</DataTypeName>
+          <ExternalAccessible>true</ExternalAccessible>
+          <ExternalVisible>true</ExternalVisible>
+          <ExternalWritable>true</ExternalWritable>
+          <LogicalAddress>%Q0.4</LogicalAddress>
+          <Name>Outfeed_Run</Name>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="14" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="15" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Outfeed conveyor drive - drive run/enable</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Tags.PlcTag>
+    </ObjectList>
+  </SW.Tags.PlcTagTable>
+</Document>

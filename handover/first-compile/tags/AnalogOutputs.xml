@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Engineering version="V21" />
+  <DocumentInfo>
+    <Created>2026-08-11T14:59:46Z</Created>
+    <ExportSetting>WithDefaults</ExportSetting>
+  </DocumentInfo>
+  <SW.Tags.PlcTagTable ID="0">
+    <AttributeList>
+      <Name>AnalogOutputs</Name>
+    </AttributeList>
+    <ObjectList>
+      <SW.Tags.PlcTag ID="1" CompositionName="Tags">
+        <AttributeList>
+          <DataTypeName>Int</DataTypeName>
+          <ExternalAccessible>true</ExternalAccessible>
+          <ExternalVisible>true</ExternalVisible>
+          <ExternalWritable>true</ExternalWritable>
+          <LogicalAddress>%QW64</LogicalAddress>
+          <Name>Outfeed_Speed</Name>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="2" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="3" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Outfeed conveyor drive - speed reference</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Tags.PlcTag>
+    </ObjectList>
+  </SW.Tags.PlcTagTable>
+</Document>
