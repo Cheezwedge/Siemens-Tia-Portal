@@ -18,7 +18,7 @@ VERSION : 0.1
       FaultFb : Bool;
       UseRunningFb : Bool := TRUE;
       UseFaultFb : Bool := TRUE;
-      FbTimeout : Time := T#5S;
+      FbTimeout : Time := T#5S;          // drive running feedback supervision time
       SpeedMin : Real := 0.0;            // engineering units at RawMin
       SpeedMax : Real := 100.0;          // engineering units at RawMax
       RawMin : Real := 0.0;              // analog output counts at SpeedMin

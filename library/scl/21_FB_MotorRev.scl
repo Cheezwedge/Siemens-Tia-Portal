@@ -18,7 +18,7 @@ VERSION : 0.1
       FaultFb : Bool;
       UseRunningFb : Bool := TRUE;
       UseFaultFb : Bool := TRUE;
-      FbTimeout : Time := T#3S;
+      FbTimeout : Time := T#3S;          // running feedback supervision time
       ChangeOverTime : Time := T#500MS;  // dead time between the two directions
    END_VAR
 

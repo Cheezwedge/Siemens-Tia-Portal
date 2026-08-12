@@ -150,6 +150,13 @@ def _device_call(spec: Spec, eq: Equipment) -> str:
         "has": eq.has,
     }
     params = eq.typedef.call(eq, ctx)
+    # A bare T#3S in a call is a number somebody chose once and nobody can defend
+    # later. Say where it came from, so the spec is the obvious place to change it.
+    params = [
+        f"{p}   // supervision time, from this device's options in the spec"
+        if "T#" in p else p
+        for p in params
+    ]
     indent = " " * (len(eq.name) + 6)
     body = (",\n" + indent).join(params)
     head = f"    #{eq.name}({body});"

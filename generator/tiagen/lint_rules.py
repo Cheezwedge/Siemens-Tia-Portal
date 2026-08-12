@@ -54,6 +54,8 @@ _ABSOLUTE_ADDR = re.compile(r"%[IQM][WBDX]?\d+(?:\.\d+)?")
 # S7 equivalent of writing a Panasonic special relay.
 _MEMORY_WRITE = re.compile(r'(?P<addr>%M[WBDX]?\d+(?:\.\d+)?)\s*:=')
 _ALWAYS_TRUE = re.compile(r"\bIF\s+TRUE\s+THEN\b|\bAND\s+TRUE\b|:=\s*TRUE\s*;\s*//\s*force", re.I)
+# T#3S, T#500MS, T#1M30S - an SCL TIME literal.
+_TIME_LITERAL = re.compile(r"\bT#\d", re.I)
 
 
 def _finding(rule: Rule, message: str, **kwargs) -> Finding:
@@ -365,6 +367,39 @@ def check_network_missing_comment(project: Project, rule: Rule) -> List[Finding]
                 f"network {network.number} of '{block.name}' has no comment.",
                 path=source.path if source else "",
                 line=network.start_line,
+                block=block.name,
+            ))
+    return findings
+
+
+def check_timer_without_explanation(project: Project, rule: Rule) -> List[Finding]:
+    """A time literal with nothing saying why that duration.
+
+    `T#3S` on its own is a number somebody chose once and nobody can now defend. The
+    check is deliberately generous about where the explanation lives - same line, or
+    any of the three lines above - because in SCL the comment usually sits on the
+    declaration or on a section banner rather than on the assignment.
+    """
+    findings = []
+    for block in project.blocks:
+        if not block.text:
+            continue
+        lines = block.text.splitlines()
+        source = project.file_of(block)
+        for index, line in enumerate(lines):
+            code, _, comment = line.partition("//")
+            if not _TIME_LITERAL.search(code):
+                continue
+            if comment.strip():
+                continue
+            if any("//" in lines[back] for back in range(max(0, index - 3), index)):
+                continue
+            findings.append(_finding(
+                rule,
+                f"'{line.strip()[:100]}' in '{block.name}' sets a time with no comment "
+                "explaining the duration.",
+                path=source.path if source else "",
+                line=block.start_line + index,
                 block=block.name,
             ))
     return findings
