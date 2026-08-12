@@ -46,15 +46,27 @@ something that type of device does:
 | Type | Verbs |
 |---|---|
 | `motor_dol` | `start`, `run`, `stop` |
-| `motor_reversing` | `forward`/`fwd`, `reverse`/`rev` |
+| `motor_reversing` | `forward`/`fwd`, `reverse`/`rev`, `stop` |
 | `vfd_analog` | `start`, `run`, `stop`, `speed = N`, `setpoint = N` |
 | `valve_single`, `valve_double` | `open`, `close` |
 | `digital_output` | `on`/`set`, `off`/`clear` |
 | `analog_output` | `value = N`, `setpoint = N` |
 
-A request is re-asserted every cycle its step is active and is not carried into the next
-step, so a request can never outlive the step that made it. `close` on a single-acting
-valve clears the open request - there is one coil, and "closed" is the de-energised state.
+**A request persists after its step advances.** It holds until an opposing request
+replaces it, or until the machine FB clears everything on losing `AutoRun`. That is
+deliberate: a clamp closed at step 1200 has to still be closed at step 1600 without the
+request being restated in every step between.
+
+Two consequences worth knowing:
+
+- **Opposing verbs cancel each other in the same step.** `stop` asserts `_Stop` *and*
+  clears `_Start`, so a device FB never sees both requests at once. That was a real bug
+  before the ladder rule set was ported - see [docs/12](12-rule-catalogue.md).
+- **A cyclic sequence should return to the state it started in.** A request nothing
+  cancels means the second cycle does not repeat the first, and `validate` warns about it.
+
+`close` on a single-acting valve clears the open request - there is one coil, and "closed"
+is the de-energised state.
 
 ### Conditions
 
