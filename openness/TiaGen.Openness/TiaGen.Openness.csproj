@@ -1,17 +1,30 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"
-          Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SDK-style project deliberately, even though the target is .NET Framework 4.8.
+
+    The reason is licensing, not fashion. A legacy csproj needs full MSBuild, which
+    means Visual Studio or its Build Tools on the machine. An SDK-style project builds
+    with the plain **.NET SDK**, which is a free download with no edition eligibility
+    to check - useful when the engineering PC belongs to a company too large for
+    Visual Studio Community's terms.
+
+        dotnet build TiaGen.Openness.csproj -c Release
+
+    MSBuild from Visual Studio or Build Tools also builds this file, so nothing is
+    lost by the change:
+
+        msbuild TiaGen.Openness.csproj /p:Configuration=Release
+  -->
 
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{7C9F2D41-2C3B-4E7A-9E51-1A6B0D6F5C10}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>TiaGen.Openness</RootNamespace>
     <AssemblyName>TiaGen.Openness</AssemblyName>
+
     <!-- Openness is published for .NET Framework only. V21 requires 4.8. -->
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFramework>net48</TargetFramework>
+
     <!--
       Openness talks to TIA Portal out of process over .NET Remoting (IpcChannel), so
       the client is NOT required to match TIA's bitness. The V21 manual lists 32-bit,
@@ -22,6 +35,18 @@
     <LangVersion>7.3</LangVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- Keep the output at bin\Release\ rather than bin\Release\net48\, because that
+         is the path the README tells people to run the exe from. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- The source list is explicit rather than globbed: a stray .cs file in this
+         folder should not silently join the build of a tool that drives a PLC. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+
+    <Product>TiaGen Openness driver</Product>
+    <Description>Applies a generated plan.json to TIA Portal V21 through the Openness API.</Description>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
   <!--
@@ -35,9 +60,9 @@
         ...\Portal V21\PublicAPI\V21\net48\Siemens.Engineering.Step7.dll
         ...\Portal V21\PublicAPI\V21\net48\Siemens.Engineering.Hmi.dll
 
-    Override on the command line if TIA is installed elsewhere:
+    Override if TIA is installed elsewhere:
 
-      msbuild TiaGen.Openness.csproj /p:TiaOpennessDir="D:\...\PublicAPI\V21\net48"
+      dotnet build -c Release -p:TiaOpennessDir="D:\...\PublicAPI\V21\net48"
 
     References are compile-time only. At runtime OpennessResolver finds the matching
     assemblies through the registry, which is what lets one binary run on a machine
@@ -47,19 +72,21 @@
     <TiaOpennessDir Condition=" '$(TiaOpennessDir)' == '' ">C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\net48</TiaOpennessDir>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Reference assemblies for net48, as a NuGet package. This is what removes the
+      need for the .NET Framework Developer Pack, and with it the last reason to
+      install Visual Studio just to compile this.
+    -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <!-- The only third-party runtime dependency. If the engineering PC has no NuGet
+         access, drop Newtonsoft.Json.dll next to the exe and reference it by HintPath. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="System" />
@@ -67,11 +94,9 @@
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
 
-    <!-- The only third-party dependency. If the engineering PC has no NuGet access,
-         drop Newtonsoft.Json.dll next to the exe and reference it by HintPath. -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-
+  <ItemGroup>
     <!--
       Private=false on every Siemens reference: the manual states that "Copy Local:
       True" is NOT supported. The assemblies must be loaded from the installation, not
@@ -79,7 +104,8 @@
     -->
 
     <!-- Base: Siemens.Engineering, .Compiler, .HW, .HW.Features -->
-    <Reference Include="Siemens.Engineering.Base">
+    <Reference Include="Siemens.Engineering.Base"
+               Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Base.dll')">
       <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Base.dll</HintPath>
       <Private>false</Private>
       <SpecificVersion>false</SpecificVersion>
@@ -87,7 +113,7 @@
 
     <!-- STEP 7: Siemens.Engineering.SW and everything below it -->
     <Reference Include="Siemens.Engineering.Step7"
-              Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Step7.dll')">
+               Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Step7.dll')">
       <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Step7.dll</HintPath>
       <Private>false</Private>
       <SpecificVersion>false</SpecificVersion>
@@ -95,7 +121,7 @@
 
     <!-- HMI: Siemens.Engineering.Hmi.* -->
     <Reference Include="Siemens.Engineering.Hmi"
-              Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Hmi.dll')">
+               Condition="Exists('$(TiaOpennessDir)\Siemens.Engineering.Hmi.dll')">
       <HintPath>$(TiaOpennessDir)\Siemens.Engineering.Hmi.dll</HintPath>
       <Private>false</Private>
       <SpecificVersion>false</SpecificVersion>
@@ -107,7 +133,7 @@
       builds.
     -->
     <Reference Include="Siemens.Engineering"
-              Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.Base.dll') And Exists('$(TiaOpennessDir)\Siemens.Engineering.dll')">
+               Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.Base.dll') And Exists('$(TiaOpennessDir)\Siemens.Engineering.dll')">
       <HintPath>$(TiaOpennessDir)\Siemens.Engineering.dll</HintPath>
       <Private>false</Private>
       <SpecificVersion>false</SpecificVersion>
@@ -133,10 +159,14 @@
     <Compile Include="Exporter.cs" />
   </ItemGroup>
 
-  <Target Name="WarnMissingOpenness" BeforeTargets="ResolveAssemblyReferences"
+  <!--
+    Fail early and legibly. Without this the build produces dozens of "type or
+    namespace 'Siemens' could not be found" errors, which sends people looking in the
+    wrong place.
+  -->
+  <Target Name="CheckOpennessAssemblies" BeforeTargets="BeforeBuild"
           Condition="!Exists('$(TiaOpennessDir)\Siemens.Engineering.Base.dll') And !Exists('$(TiaOpennessDir)\Siemens.Engineering.dll')">
-    <Warning Text="No Openness assemblies found in '$(TiaOpennessDir)'. On V21 they are in a target-framework subfolder, e.g. ...\Portal V21\PublicAPI\V21\net48. Pass /p:TiaOpennessDir=... to override. From V21 Openness is an inherent part of TIA Portal, so a missing folder usually means TIA Portal itself is not installed." />
+    <Error Text="No Openness assemblies found in '$(TiaOpennessDir)'. On V21 they live in a target-framework subfolder, e.g. 'C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\net48'. Pass -p:TiaOpennessDir=... to point at yours. From V21 Openness is an inherent part of TIA Portal, so a missing folder usually means TIA Portal is not installed on this machine - this driver can only be compiled where TIA Portal is installed." />
   </Target>
 
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

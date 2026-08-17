@@ -32,9 +32,31 @@ diffed. This program executes it and reports.
 
 ## Build
 
+No Visual Studio licence is needed. The project is SDK-style, so the free
+**.NET SDK** is enough:
+
+```bat
+cd openness\TiaGen.Openness
+dotnet build TiaGen.Openness.csproj -c Release
+```
+
+MSBuild from Visual Studio or Build Tools builds the same file if you prefer:
+
 ```bat
 msbuild TiaGen.Openness\TiaGen.Openness.csproj /p:Configuration=Release
 ```
+
+Three ways to get a compiler, cheapest first:
+
+| | Cost | Notes |
+|---|---|---|
+| **.NET SDK** | free, no eligibility terms | what the command above uses. Reference assemblies for net48 come from a NuGet package, so no Developer Pack either |
+| **Build Tools for Visual Studio** | free download | MSBuild without the IDE; the usual choice for build machines |
+| **Visual Studio Community** | free, **with conditions** | not licensed for use in larger organisations - check the terms before installing it at work |
+
+The exe must be **compiled on a machine with TIA Portal installed**: the Siemens
+reference assemblies are not redistributable and are not in this repo. The build fails
+with one clear error if they are missing, rather than a wall of namespace errors.
 
 If TIA is not in the default location, point the build at the assembly folder. **Note the
 `net48` subfolder** - V21 made the Openness libraries modular and moved them:
