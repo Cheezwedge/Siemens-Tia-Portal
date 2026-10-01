@@ -234,7 +234,9 @@ def _cmd_build(args) -> int:
 
     print(f"Wrote {len(result.files)} files to {os.path.abspath(result.out_dir)}")
     for relative in result.files:
-        print(f"  {relative}")
+        # Paths are built two ways inside build(); show them in the platform's own
+        # form, so a Windows user does not see scl\a.scl next to scl/b.scl.
+        print(f"  {os.path.normpath(relative)}")
     print(f"\nReview {os.path.join(result.out_dir, 'report.md')}, then run the Openness driver:")
     print(f"  TiaGen.Openness.exe apply --plan {os.path.join(result.out_dir, 'plan.json')}")
     return 0

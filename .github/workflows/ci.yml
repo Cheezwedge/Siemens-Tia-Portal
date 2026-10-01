@@ -115,10 +115,17 @@ jobs:
       - name: Fetch the embeddable Python
         shell: pwsh
         run: |
-          $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
+          $url      = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
+          # Pinned. The package ships this interpreter to corporate PCs, so a
+          # different file from the same URL must stop the build, not ride along.
+          $expected = "009D6BF7E3B2DDCA3D784FA09F90FE54336D5B60F0E0F305C37F400BF83CFD3B"
           Invoke-WebRequest $url -OutFile py-embed.zip
-          # Recorded so every package can be traced to the exact interpreter it ships.
-          "embeddable python sha256: " + (Get-FileHash py-embed.zip -Algorithm SHA256).Hash
+          $actual = (Get-FileHash py-embed.zip -Algorithm SHA256).Hash
+          "embeddable python sha256: $actual"
+          if ($actual -ne $expected) {
+            Write-Host "::error::embeddable Python hash mismatch: expected $expected"
+            exit 1
+          }
 
       - name: Build the package
         run: python packaging/build_package.py --python-embed py-embed.zip --out dist
