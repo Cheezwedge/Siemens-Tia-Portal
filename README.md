@@ -146,6 +146,7 @@ every device type**.
 | [10 A standards system](docs/10-standards-system.md) | Making a house standard executable across a team: conformance checking, ladder, device lists, and where online monitoring actually has to live |
 | [11 Step sequences](docs/11-step-sequences.md) | Generating a step sequencer from a step table, with operator messages and a blocked-reason word |
 | [12 Rule catalogue](docs/12-rule-catalogue.md) | Every review rule, where it runs, and what carried over from the Panasonic ladder reviewer |
+| [13 Your own toolchain](docs/13-own-toolchain-options.md) | Six ways to replace an Eigen subscription with a tool you own, and how to install it on a corporate Windows machine |
 | [openness/README.md](openness/README.md) | Building and running the driver |
 
 ---
