@@ -36,10 +36,16 @@ jobs:
       # the build log is where somebody reviewing a pull request will read them.
       - name: Validate every example spec
         run: |
+          # nullglob: a pattern that matches nothing expands to nothing instead of
+          # to itself. Without it a wrong path is passed through as a literal
+          # '*.yaml', which is exactly how this step was broken for weeks.
+          shopt -s nullglob
+          specs=(../spec/examples/*.yaml)
+          if [ ${#specs[@]} -eq 0 ]; then echo "no example specs found"; exit 1; fi
           status=0
-          for spec in spec/examples/*.yaml; do
+          for spec in "${specs[@]}"; do
             echo "::group::validate $spec"
-            python -m tiagen validate "../$spec" || status=1
+            python -m tiagen validate "$spec" || status=1
             echo "::endgroup::"
           done
           exit $status
@@ -47,7 +53,10 @@ jobs:
 
       - name: Build every example spec
         run: |
-          for spec in ../spec/examples/*.yaml; do
+          shopt -s nullglob
+          specs=(../spec/examples/*.yaml)
+          if [ ${#specs[@]} -eq 0 ]; then echo "no example specs found"; exit 1; fi
+          for spec in "${specs[@]}"; do
             name=$(basename "$spec" .yaml)
             echo "::group::build $name"
             python -m tiagen build "$spec" -o "../out/$name"
@@ -59,8 +68,11 @@ jobs:
       # of the two is wrong - and this is the step that says so before a human has to.
       - name: Lint the generated output
         run: |
+          shopt -s nullglob
+          dirs=(../out/*/scl)
+          if [ ${#dirs[@]} -eq 0 ]; then echo "nothing was built to lint"; exit 1; fi
           status=0
-          for dir in ../out/*/scl; do
+          for dir in "${dirs[@]}"; do
             echo "::group::lint $dir"
             python -m tiagen lint "$dir" --min-severity warning || status=1
             echo "::endgroup::"
