@@ -60,6 +60,14 @@ def main(argv: List[str] | None = None) -> int:
     p_lint.add_argument("--list", action="store_true", dest="list_rules",
                         help="print the rule catalogue and exit")
 
+    p_self = sub.add_parser(
+        "selftest",
+        help="check this installation end to end and zip the results into one file",
+    )
+    p_self.add_argument("--out", help="folder for the result zip (default: current folder)")
+    p_self.add_argument("--no-zip", action="store_true",
+                        help="leave the results as a folder instead of a zip")
+
     p_imp = sub.add_parser(
         "import-steps",
         help="turn a step spreadsheet (CSV) into the spec's sequence section",
@@ -83,6 +91,8 @@ def main(argv: List[str] | None = None) -> int:
             return _cmd_import_steps(args)
         if args.command == "lint":
             return _cmd_lint(args)
+        if args.command == "selftest":
+            return _cmd_selftest(args)
     except model.SpecError as exc:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
@@ -93,6 +103,18 @@ def main(argv: List[str] | None = None) -> int:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
     return 1
+
+
+def _cmd_selftest(args) -> int:
+    from . import selftest
+
+    report, path = selftest.run(out_dir=args.out, make_zip=not args.no_zip)
+    print(selftest.format_report(report), end="")
+    print()
+    print(f"Results: {path}")
+    print("Attach that file to a message - it holds everything needed to diagnose a problem,")
+    print("and no user or machine names.")
+    return 1 if report.failed else 0
 
 
 def _cmd_lint(args) -> int:

@@ -32,3 +32,6 @@ UserFiles/
 System/
 Logs/
 TMP/
+
+# Built packages - produced by packaging/build_package.py and by CI
+dist/

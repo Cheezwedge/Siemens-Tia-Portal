@@ -93,3 +93,72 @@ jobs:
           name: generated-output
           path: out/
           retention-days: 14
+
+  # The installable package, tested on real Windows as a user would run it:
+  # extracted from the zip, launched through tiagen.cmd, with no Python on PATH so
+  # it can only pass if the bundled interpreter works. No TIA Portal here, so the
+  # TIA checks warn rather than fail - TIA itself is tested on the engineering PC,
+  # by the same `tiagen selftest`.
+  package-windows:
+    name: Package and smoke-test on Windows
+    runs-on: windows-latest
+    needs: generator
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only to run the packaging script. The package itself must not use it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch the embeddable Python
+        shell: pwsh
+        run: |
+          $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
+          Invoke-WebRequest $url -OutFile py-embed.zip
+          # Recorded so every package can be traced to the exact interpreter it ships.
+          "embeddable python sha256: " + (Get-FileHash py-embed.zip -Algorithm SHA256).Hash
+
+      - name: Build the package
+        run: python packaging/build_package.py --python-embed py-embed.zip --out dist
+
+      - name: Smoke-test the extracted package, with no Python on PATH
+        shell: pwsh
+        run: |
+          $zip  = Get-ChildItem dist\TiaGen-*-win64.zip | Select-Object -First 1
+          $dest = Join-Path $env:RUNNER_TEMP "pkg"
+          Expand-Archive $zip.FullName -DestinationPath $dest
+          $home_ = Join-Path $dest "TiaGen"
+
+          # Strip PATH to the bare system folders for the child processes.
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          Set-Location $home_
+
+          function Step($label, $command) {
+            Write-Host "::group::$label"
+            cmd /c $command
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
+            if ($code -ne 0) { Write-Host "::error::$label exited $code"; exit $code }
+          }
+
+          Step "selftest"  "tiagen.cmd selftest --out `"$env:RUNNER_TEMP\selftest`""
+          Step "validate"  "tiagen.cmd validate spec\examples\step-sequence.yaml"
+          Step "build"     "tiagen.cmd build spec\examples\step-sequence.yaml -o `"$env:RUNNER_TEMP\out`""
+          Step "lint"      "tiagen.cmd lint `"$env:RUNNER_TEMP\out\scl`""
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: TiaGen-win64
+          path: dist/TiaGen-*-win64.zip
+          retention-days: 30
+
+      - name: Upload the selftest bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-windows-runner
+          path: ${{ runner.temp }}/selftest/*.zip
+          retention-days: 14

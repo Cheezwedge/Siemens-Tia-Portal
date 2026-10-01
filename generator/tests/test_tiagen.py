@@ -927,5 +927,118 @@ class TestLint(unittest.TestCase):
             self.assertIn(rule_id, report)
 
 
+class TestPackaging(unittest.TestCase):
+    """The installable package, tested as installed - extracted, then run from inside.
+
+    Testing the repo instead of the package is how a broken install ships: the
+    package is a different set of files in a different place.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import subprocess
+        import zipfile
+
+        cls.work = tempfile.mkdtemp(prefix="tiagen-pkg-")
+        subprocess.check_call([sys.executable, os.path.join(REPO_ROOT, "packaging",
+                                                            "build_package.py"),
+                               "--out", cls.work, "--version", "test"],
+                              stdout=subprocess.DEVNULL)
+        archive = os.path.join(cls.work, "TiaGen-test-win64-nopython.zip")
+        cls.root = os.path.join(cls.work, "extracted", "TiaGen")
+        with zipfile.ZipFile(archive) as zf:
+            zf.extractall(os.path.join(cls.work, "extracted"))
+
+    def _run_from_package(self, *args):
+        import subprocess
+
+        env = dict(os.environ, PYTHONPATH=os.path.join(self.root, "generator"))
+        return subprocess.run([sys.executable, "-m", "tiagen", *args], cwd=self.root,
+                              env=env, capture_output=True, text=True)
+
+    def test_package_holds_what_a_user_runs_and_nothing_else(self):
+        for needed in ("tiagen.cmd", "README.txt", "rules.yaml", "VERSION.txt",
+                       "MANIFEST.sha256", "library/scl/10_UDT_DevIf.scl",
+                       "generator/tiagen/cli.py", "spec/examples/step-sequence.yaml",
+                       "openness/TiaGen.Openness/TiaGen.Openness.csproj"):
+            self.assertTrue(os.path.exists(os.path.join(self.root, needed)), needed)
+        for leaked in ("generator/tests", ".github", "docs", "handover"):
+            self.assertFalse(os.path.exists(os.path.join(self.root, leaked)), leaked)
+
+    def test_launcher_and_readme_have_windows_line_endings(self):
+        # cmd.exe mis-parses some constructs in LF-only batch files, and Notepad on
+        # older Windows shows an LF-only README as one line.
+        for name in ("tiagen.cmd", "README.txt"):
+            with open(os.path.join(self.root, name), "rb") as fh:
+                data = fh.read()
+            self.assertIn(b"\r\n", data, name)
+            self.assertEqual(data.count(b"\n"), data.count(b"\r\n"), name)
+
+    def test_selftest_passes_from_the_extracted_package(self):
+        result = self._run_from_package("selftest", "--no-zip", "--out", self.work)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("[PASS] package", result.stdout)
+        self.assertIn("[PASS] generator", result.stdout)
+
+    def test_code_resolves_resources_from_the_package_not_the_repo(self):
+        result = self._run_from_package("lint", "--list")
+        self.assertEqual(0, result.returncode, result.stderr)
+        probe = self._run_from_package_python(
+            "import tiagen.build as b; print(b.REPO_ROOT)")
+        self.assertEqual(os.path.realpath(self.root), os.path.realpath(probe.strip()))
+
+    def _run_from_package_python(self, code):
+        import subprocess
+
+        env = dict(os.environ, PYTHONPATH=os.path.join(self.root, "generator"))
+        return subprocess.run([sys.executable, "-c", code], cwd=self.root, env=env,
+                              capture_output=True, text=True, check=True).stdout
+
+
+class TestSelftest(unittest.TestCase):
+    def test_a_missing_or_altered_file_is_named(self):
+        import shutil
+        import subprocess
+        import zipfile
+
+        work = tempfile.mkdtemp(prefix="tiagen-tamper-")
+        subprocess.check_call([sys.executable, os.path.join(REPO_ROOT, "packaging",
+                                                            "build_package.py"),
+                               "--out", work, "--version", "t"], stdout=subprocess.DEVNULL)
+        with zipfile.ZipFile(os.path.join(work, "TiaGen-t-win64-nopython.zip")) as zf:
+            zf.extractall(work)
+        root = os.path.join(work, "TiaGen")
+        os.remove(os.path.join(root, "library", "scl", "22_FB_Valve.scl"))
+        with open(os.path.join(root, "rules.yaml"), "a", encoding="utf-8") as fh:
+            fh.write("# edited\n")
+
+        from tiagen import selftest
+        check = selftest.check_package(root)
+        self.assertEqual("fail", check.status)
+        self.assertIn("missing: library/scl/22_FB_Valve.scl", check.detail)
+        self.assertIn("changed: rules.yaml", check.detail)
+        shutil.rmtree(work, ignore_errors=True)
+
+    def test_the_bundle_names_no_user_or_machine(self):
+        from tiagen import selftest
+
+        saved = {k: os.environ.get(k) for k in ("USERNAME", "COMPUTERNAME", "USERDOMAIN")}
+        try:
+            os.environ.update(USERNAME="jsmith", COMPUTERNAME="ENG-PC-042",
+                              USERDOMAIN="CORPNET")
+            text = selftest.redact(
+                "User: CORPNET\\jsmith on ENG-PC-042, file /opt/tiagen/rules.yaml",
+                "/opt/tiagen")
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        for secret in ("jsmith", "ENG-PC-042", "CORPNET", "/opt/tiagen"):
+            self.assertNotIn(secret, text)
+        self.assertIn("<install>/rules.yaml", text)
+
+
 if __name__ == "__main__":
     unittest.main()
