@@ -78,8 +78,6 @@ def main(argv=None) -> int:
     for name in ("tiagen.cmd", "README.txt"):
         shutil.copy2(os.path.join(HERE, name), os.path.join(root, name))
 
-    _write_templates(root)
-
     os.makedirs(os.path.join(root, "bin"), exist_ok=True)
     if args.driver:
         shutil.copy2(args.driver, os.path.join(root, "bin", "TiaGen.Openness.exe"))
@@ -92,6 +90,9 @@ def main(argv=None) -> int:
         _install_python(root, args.python_embed, args.wheels)
     else:
         print("WARNING: no --python-embed given; package has no bundled Python (test build only)")
+
+    # After the Python install, so the templates can be made by the interpreter that ships.
+    _write_templates(root)
 
     with open(os.path.join(root, "VERSION.txt"), "w", encoding="utf-8") as fh:
         fh.write(f"{version}\n")
@@ -121,9 +122,11 @@ def _write_templates(root: str) -> None:
     """
     out = os.path.join(root, "templates")
     os.makedirs(out, exist_ok=True)
+    python = _template_python(root)
     # No bytecode caches: they would be written into the staged package, land in the
     # manifest, and be recompiled on the user's PC - which selftest would then report,
-    # correctly but misleadingly, as files altered since packaging.
+    # correctly but misleadingly, as files altered since packaging. -B as well as the
+    # variable, because the embeddable Python ignores environment variables.
     env = dict(os.environ, PYTHONPATH=os.path.join(root, "generator"),
                PYTHONDONTWRITEBYTECODE="1")
     jobs = [
@@ -132,8 +135,27 @@ def _write_templates(root: str) -> None:
           "--from", os.path.join(root, "spec", "examples", "step-sequence.yaml")]),
     ]
     for args in jobs:
-        subprocess.check_call([sys.executable, "-m", "tiagen"] + args, env=env,
+        subprocess.check_call([python, "-B", "-m", "tiagen"] + args, env=env,
                               stdout=subprocess.DEVNULL)
+
+
+def _template_python(root: str) -> str:
+    """The bundled interpreter when it can run here, otherwise this one.
+
+    The bundled one is preferred because it is what the user runs: if it cannot make
+    a workbook, the package is broken and the build should stop now, not on site.
+    It only runs on Windows, so a package assembled elsewhere falls back to the
+    interpreter running this script - which then needs PyYAML, like any checkout.
+    """
+    bundled = os.path.join(root, "python", "python.exe")
+    if os.name == "nt" and os.path.isfile(bundled):
+        return bundled
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        raise SystemExit(f"{sys.executable} has no PyYAML, which the templates need: "
+                         f"pip install -r generator/requirements.txt")
+    return sys.executable
 
 
 def _copy(src: str, dst: str) -> None:
