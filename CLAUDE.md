@@ -52,12 +52,18 @@ python -m tiagen build    ../spec/examples/minimal.yaml -o ../out/minimal
 python -m tiagen import-steps steps.csv -o seq.yaml       # step spreadsheet -> sequence section
 python -m tiagen lint     ../out/minimal/scl              # house rules over an export
 python -m tiagen lint --list                             # the rule catalogue
+python -m tiagen selftest                                # check an install end to end, zip the results
 
-cd .. && python3 -m unittest discover -s generator/tests  # 90 tests, keep them green
+cd .. && python3 -m unittest discover -s generator/tests  # 96 tests, keep them green
 ```
 
 The Openness driver only runs on Windows with TIA Portal V21 installed; it cannot be
 built or tested here. Treat its code as carefully reviewed but unexecuted.
+
+To check CI before pushing, run the workflow's own steps rather than retyping them:
+`python tools/run_ci_locally.py .github/workflows/ci.yml`. The installable package is
+built by `packaging/build_package.py` and smoke-tested on Windows in CI - see
+[docs/14-testing.md](docs/14-testing.md).
 
 ## When asked to build a machine
 
