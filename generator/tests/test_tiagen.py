@@ -964,6 +964,21 @@ class TestPackaging(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(self.root, needed)), needed)
         for leaked in ("generator/tests", ".github", "docs", "handover"):
             self.assertFalse(os.path.exists(os.path.join(self.root, leaked)), leaked)
+        for needed in ("templates/machine-template.xlsx",
+                       "templates/example-transfer-station.xlsx"):
+            self.assertTrue(os.path.exists(os.path.join(self.root, needed)), needed)
+
+    def test_no_bytecode_caches_ship(self):
+        # A shipped .pyc is recompiled on the user's PC, and selftest then reports the
+        # package as altered - a false antivirus alarm.
+        with open(os.path.join(self.root, "MANIFEST.sha256"), encoding="utf-8") as fh:
+            self.assertNotIn("__pycache__", fh.read())
+
+    def test_the_packaged_example_workbook_builds(self):
+        result = self._run_from_package(
+            "build", os.path.join("templates", "example-transfer-station.xlsx"),
+            "-o", os.path.join(self.work, "from-workbook"))
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_launcher_and_readme_have_windows_line_endings(self):
         # cmd.exe mis-parses some constructs in LF-only batch files, and Notepad on
@@ -1038,6 +1053,184 @@ class TestSelftest(unittest.TestCase):
         for secret in ("jsmith", "ENG-PC-042", "CORPNET", "/opt/tiagen"):
             self.assertNotIn(secret, text)
         self.assertIn("<install>/rules.yaml", text)
+
+
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
+
+class TestWorkbook(unittest.TestCase):
+    """The Excel workbook as a spec.
+
+    The fixtures were written by software other than this repo - one with inline
+    strings, one converted to the shared-string storage Excel itself uses, verified
+    identical by an independent reader. Testing only against this repo's own writer
+    would prove that the two halves agree with each other, not that either is right.
+    """
+
+    def _build_all(self, source, out):
+        spec = model.load(source)
+        result = build_mod.build(spec, out_dir=out)
+        self.assertTrue(result.ok, result.errors)
+        files = {}
+        for base, _dirs, names in os.walk(out):
+            for name in names:
+                path = os.path.join(base, name)
+                with open(path, "rb") as fh:
+                    files[os.path.relpath(path, out)] = fh.read()
+        return files
+
+    def test_every_example_round_trips_through_a_workbook_to_identical_output(self):
+        import yaml
+        from tiagen import workbook
+
+        for example in ("minimal.yaml", "conveyor-line.yaml", "step-sequence.yaml"):
+            source = os.path.join(REPO_ROOT, "spec", "examples", example)
+            work = tempfile.mkdtemp(prefix="tiagen-wb-")
+            book = os.path.join(work, "machine.xlsx")
+            with open(source, encoding="utf-8") as fh:
+                workbook.write_workbook(book, yaml.safe_load(fh))
+            from_yaml = self._build_all(source, os.path.join(work, "yaml"))
+            from_book = self._build_all(book, os.path.join(work, "xlsx"))
+            self.assertEqual(sorted(from_yaml), sorted(from_book), example)
+            for name in from_yaml:
+                self.assertEqual(from_yaml[name], from_book[name], f"{example}: {name}")
+
+    def test_the_same_spec_builds_to_the_same_bytes_every_time(self):
+        import time
+
+        source = os.path.join(REPO_ROOT, "spec", "examples", "conveyor-line.yaml")
+        first = self._build_all(source, tempfile.mkdtemp(prefix="tiagen-r1-"))
+        time.sleep(1.1)          # a wall-clock timestamp would differ across this gap
+        second = self._build_all(source, tempfile.mkdtemp(prefix="tiagen-r2-"))
+        self.assertEqual(first, second)
+
+    def test_a_workbook_edited_in_another_tool_reads_correctly(self):
+        from tiagen import workbook
+
+        raw = workbook.read_workbook(os.path.join(FIXTURES, "edited-by-another-tool.xlsx"))
+        self.assertEqual("PressCell", raw["project"]["name"])          # padding trimmed
+        self.assertEqual(["Manual", "Auto"], raw["modes"])
+        self.assertIs(False, raw["safety"]["fail_safe_plc"])
+        by_name = {e["name"]: e for e in raw["equipment"]}
+        self.assertEqual(5, len(by_name))                              # blank row skipped
+        press = by_name["Press"]
+        self.assertEqual("Main press motor", press["description"])     # rich text runs
+        self.assertIs(True, press["options"]["has_running_feedback"])
+        self.assertIs(False, press["options"]["has_fault_feedback"])
+        self.assertEqual(2500, press["options"]["feedback_timeout_ms"])  # retyped heading
+        self.assertEqual(100.5, by_name["Level"]["scaling"]["eng_max"])
+        steps = {s["step"]: s for s in raw["sequence"]["steps"]}
+        self.assertEqual("3s", steps[1000]["timeout"])                 # bare number = seconds
+        self.assertEqual(["Press.stop", "Guard.close"], steps[1020]["actions"])
+        self.assertEqual(["Press.stopped", "Guard.closed"], steps[1020]["wait_for"])  # Alt+Enter
+        model.from_dict(raw)                                           # and it is a valid spec
+
+    def test_excel_shared_string_storage_reads_the_same(self):
+        from tiagen import workbook
+
+        inline = workbook.read_workbook(os.path.join(FIXTURES, "edited-by-another-tool.xlsx"))
+        shared = workbook.read_workbook(os.path.join(FIXTURES, "excel-shared-strings.xlsx"))
+        self.assertEqual(inline, shared)
+
+    def test_strict_ooxml_namespace_reads_the_same(self):
+        # Excel's "Strict Open XML" save option uses different namespaces throughout.
+        import zipfile
+        from tiagen import workbook
+
+        src = os.path.join(FIXTURES, "excel-shared-strings.xlsx")
+        dst = os.path.join(tempfile.mkdtemp(prefix="tiagen-strict-"), "strict.xlsx")
+        with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
+            for name in zin.namelist():
+                data = zin.read(name).replace(
+                    b"http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+                    b"http://purl.oclc.org/ooxml/spreadsheetml/main")
+                zout.writestr(name, data)
+        self.assertEqual(workbook.read_workbook(src), workbook.read_workbook(dst))
+
+    def _book(self, equipment_rows, modules=None, extra_heading=None):
+        from tiagen import workbook, xlsx
+
+        path = os.path.join(tempfile.mkdtemp(prefix="tiagen-bad-"), "bad.xlsx")
+        heading = [c[0] for c in workbook.EQUIPMENT_COLUMNS]
+        if extra_heading:
+            heading.append(extra_heading)
+        machine = [["Setting", "Value"], ["Project name", "Rig"],
+                   ["PLC order number", "6ES7214-1AH50-0XB0"]]
+        sheets = [xlsx.Sheet("Machine", machine), xlsx.Sheet("Equipment", [heading] + equipment_rows)]
+        if modules:
+            sheets.append(xlsx.Sheet("Modules", [["Parent", "Name", "Order number", "Slot"]] + modules))
+        xlsx.write(path, sheets)
+        return path
+
+    def test_every_problem_is_reported_at_once_by_sheet_and_row(self):
+        from tiagen import workbook
+
+        path = self._book(
+            [["Conv", "motr_dol"],
+             ["Conv", "motor_dol"],
+             ["Pump", "motor_dol"] + [None] * 11 + ["fast"]],
+            modules=[["Nowhere", "DI16", "REPLACE-WITH-CATALOG-MLFB", 2]],
+            extra_heading="Colour")
+        with self.assertRaises(workbook.WorkbookError) as caught:
+            workbook.read_workbook(path)
+        text = "\n".join(caught.exception.problems)
+        self.assertIn("Equipment row 2 (Conv): 'motr_dol' is not an equipment type. "
+                      "Did you mean motor_dol?", text)
+        self.assertIn("Equipment row 3 (Conv): name already used on Equipment row 2", text)
+        self.assertIn("Equipment row 4 (Feedback timeout (ms)): must be a whole number, "
+                      "got 'fast'", text)
+        self.assertNotIn("could not convert", text)        # no raw Python errors
+        # In the order someone fixing them walks the workbook: sheet, then row.
+        rows = [p.split(":")[0] for p in caught.exception.problems]
+        self.assertEqual(["Equipment row 1", "Equipment row 2 (Conv)",
+                          "Equipment row 3 (Conv)", "Equipment row 4 (Feedback timeout (ms))",
+                          "Modules row 2"], rows)
+        self.assertIn("column 'Colour' is not one this tool reads", text)
+        self.assertIn("Modules row 2: parent 'Nowhere'", text)
+        self.assertGreaterEqual(len(caught.exception.problems), 5)
+
+    def test_validate_accepts_a_workbook_directly(self):
+        spec = model.load(os.path.join(FIXTURES, "excel-shared-strings.xlsx"))
+        errors, _warnings = validate.check(spec)
+        self.assertEqual([], errors)
+        self.assertEqual("FB_PressCellCycle", spec.fb_sequence)
+
+    def test_the_help_sheet_is_generated_from_the_code(self):
+        from tiagen import devices, workbook, xlsx
+
+        path = os.path.join(tempfile.mkdtemp(prefix="tiagen-help-"), "t.xlsx")
+        workbook.write_workbook(path)
+        help_rows = xlsx.read(path)["Help"]
+        listed = {cells[1] for _n, cells in help_rows if cells[0] == "Equipment type"}
+        self.assertEqual(set(devices.TYPES), listed)
+
+    def test_an_empty_template_has_no_sequence_and_explains_what_is_missing(self):
+        from tiagen import workbook
+
+        path = os.path.join(tempfile.mkdtemp(prefix="tiagen-empty-"), "t.xlsx")
+        workbook.write_workbook(path)
+        with self.assertRaises(workbook.WorkbookError) as caught:
+            workbook.read_workbook(path)
+        self.assertIn("Machine: 'Project name' is required", caught.exception.problems)
+        self.assertNotIn("Sequence", " ".join(caught.exception.problems))
+
+    def test_an_old_xls_file_says_how_to_fix_it(self):
+        from tiagen import workbook
+
+        path = os.path.join(tempfile.mkdtemp(prefix="tiagen-xls-"), "old.xlsx")
+        with open(path, "wb") as fh:
+            fh.write(b"\xd0\xcf\x11\xe0 not a zip")      # the .xls compound-file header
+        with self.assertRaises(workbook.WorkbookError) as caught:
+            workbook.read_workbook(path)
+        self.assertIn("save it as 'Excel Workbook (*.xlsx)'", str(caught.exception))
+
+    def test_column_letters(self):
+        from tiagen import xlsx
+
+        for index, letters in ((0, "A"), (25, "Z"), (26, "AA"), (51, "AZ"), (52, "BA"),
+                               (701, "ZZ"), (702, "AAA")):
+            self.assertEqual(letters, xlsx.column_letter(index))
+            self.assertEqual(index, xlsx._column_index(letters + "1"))
 
 
 if __name__ == "__main__":

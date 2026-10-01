@@ -102,11 +102,25 @@ def _split(value: str, delimiter: str) -> List[str]:
 def parse_csv(text: str) -> List[Dict[str, Any]]:
     """Read a step table into the mappings the sequence section expects."""
     delimiter = _delimiter(text)
-    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
-    columns = _map_headers(reader.fieldnames or [])
+    table = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    if not table:
+        raise ImportError_("the file is empty")
+    rows = [(number, cells) for number, cells in enumerate(table[1:], start=2)]
+    return parse_rows(table[0], rows, delimiter)
 
+
+def parse_rows(header: List[str], rows, delimiter: str) -> List[Dict[str, Any]]:
+    """Read step-table rows, from a CSV or a workbook sheet.
+
+    `rows` is (row number as the user sees it, cells). `delimiter` is the character
+    the source used between fields; inside a cell, lists are split on the others.
+    For a workbook there is no field delimiter, so pass one that is never in a cell.
+    """
+    columns = _map_headers(header)
     steps: List[Dict[str, Any]] = []
-    for line, row in enumerate(reader, start=2):
+    for line, cells in rows:
+        row = {heading: (cells[i] if i < len(cells) else "")
+               for i, heading in enumerate(header)}
         raw_step = _cell(row, columns, "step")
         if not raw_step:
             continue                      # blank row, or a spacer between phases
@@ -159,7 +173,10 @@ def _step_number(text: str) -> Optional[int]:
     the cell turns a phase heading - "Phase 2 - transfer" - into step 2, which then
     generates a real branch nobody asked for.
     """
-    return int(text) if _STEP_RE.match(text.strip()) else None
+    text = text.strip()
+    # 1000.0 is how some tools store a whole number; it is still step 1000.
+    text = re.sub(r"\.0+$", "", text)
+    return int(text) if _STEP_RE.match(text) else None
 
 
 def _identifier(text: str) -> str:

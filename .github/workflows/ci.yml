@@ -84,6 +84,13 @@ jobs:
         run: python -m tiagen lint --list
         working-directory: generator
 
+      # tiagen's own reader and writer agreeing proves nothing about the file format.
+      # This opens the workbooks with an independent implementation.
+      - name: Cross-check workbooks with an independent reader
+        run: |
+          pip install openpyxl
+          python tools/check_workbook_independently.py
+
       # Kept for review: the artefacts a reviewer would otherwise have to generate
       # themselves to see what a spec change did to the emitted code.
       - name: Upload generated artefacts
@@ -154,6 +161,10 @@ jobs:
           Step "validate"  "tiagen.cmd validate spec\examples\step-sequence.yaml"
           Step "build"     "tiagen.cmd build spec\examples\step-sequence.yaml -o `"$env:RUNNER_TEMP\out`""
           Step "lint"      "tiagen.cmd lint `"$env:RUNNER_TEMP\out\scl`""
+          Step "excel"     "tiagen.cmd excel `"$env:RUNNER_TEMP\new.xlsx`""
+          Step "validate workbook" "tiagen.cmd validate templates\example-transfer-station.xlsx"
+          Step "build workbook"    "tiagen.cmd build templates\example-transfer-station.xlsx -o `"$env:RUNNER_TEMP\out-xlsx`""
+          Step "from-excel"        "tiagen.cmd from-excel templates\example-transfer-station.xlsx -o `"$env:RUNNER_TEMP\from-excel.yaml`""
 
       - name: Upload the package
         uses: actions/upload-artifact@v4

@@ -14,6 +14,7 @@ Windows CI job that runs the package proves that rather than assuming it.
       generator/tiagen/     the generator
       library/scl/          the house device library
       spec/examples/        example specs; selftest builds one
+      templates/            machine-template.xlsx, and an example filled in
       openness/             driver sources, to build once on the TIA PC
       bin/                  the built driver goes here
       rules.yaml            lint rule catalogue
@@ -77,6 +78,8 @@ def main(argv=None) -> int:
     for name in ("tiagen.cmd", "README.txt"):
         shutil.copy2(os.path.join(HERE, name), os.path.join(root, name))
 
+    _write_templates(root)
+
     os.makedirs(os.path.join(root, "bin"), exist_ok=True)
     if args.driver:
         shutil.copy2(args.driver, os.path.join(root, "bin", "TiaGen.Openness.exe"))
@@ -95,6 +98,11 @@ def main(argv=None) -> int:
         fh.write(f"built {_dt.datetime.now(_dt.timezone.utc).isoformat(timespec='seconds')}\n")
         fh.write(f"python bundled: {'yes' if args.python_embed else 'no'}\n")
 
+    # Belt and braces: whatever wrote a cache, none ships.
+    for base, dirs, _files in os.walk(root):
+        for d in [d for d in dirs if d == "__pycache__"]:
+            shutil.rmtree(os.path.join(base, d))
+
     # Last, so it covers every file above and nothing written after it.
     _write_manifest(root)
 
@@ -103,6 +111,29 @@ def main(argv=None) -> int:
     _zip(stage_root, archive)
     print(f"package: {archive}")
     return 0
+
+
+def _write_templates(root: str) -> None:
+    """Workbooks made by the packaged generator itself, so they match the code shipped.
+
+    A template copied from somewhere else would drift: a new column in the code, an
+    old file in the zip, and the first user to fill it in finds out.
+    """
+    out = os.path.join(root, "templates")
+    os.makedirs(out, exist_ok=True)
+    # No bytecode caches: they would be written into the staged package, land in the
+    # manifest, and be recompiled on the user's PC - which selftest would then report,
+    # correctly but misleadingly, as files altered since packaging.
+    env = dict(os.environ, PYTHONPATH=os.path.join(root, "generator"),
+               PYTHONDONTWRITEBYTECODE="1")
+    jobs = [
+        (["excel", os.path.join(out, "machine-template.xlsx"), "--force"]),
+        (["excel", os.path.join(out, "example-transfer-station.xlsx"), "--force",
+          "--from", os.path.join(root, "spec", "examples", "step-sequence.yaml")]),
+    ]
+    for args in jobs:
+        subprocess.check_call([sys.executable, "-m", "tiagen"] + args, env=env,
+                              stdout=subprocess.DEVNULL)
 
 
 def _copy(src: str, dst: str) -> None:

@@ -30,7 +30,27 @@ STEP 1 - CHECK THE INSTALLATION
     WARN lines are normal on a first run. FAIL lines are the ones to fix.
 
 
-STEP 2 - GENERATE A MACHINE
+STEP 2 - DESCRIBE A MACHINE IN EXCEL
+    Copy templates\machine-template.xlsx, fill in the Machine and Equipment sheets,
+    and the Sequence sheet if the machine has a step sequence. The Help sheet lists
+    every equipment type, wait-for status and action verb.
+
+    templates\example-transfer-station.xlsx is a complete machine to copy from.
+
+        tiagen validate mymachine.xlsx
+        tiagen build    mymachine.xlsx -o out\mymachine
+
+    Every problem is listed at once, by sheet and row ("Equipment row 14 ...").
+    To keep the spec in version control as text:
+
+        tiagen from-excel mymachine.xlsx
+
+    To turn an existing YAML spec into a workbook:
+
+        tiagen excel mymachine.xlsx --from spec\examples\conveyor-line.yaml
+
+
+STEP 3 - OR FROM A YAML SPEC
         tiagen validate spec\examples\step-sequence.yaml
         tiagen build    spec\examples\step-sequence.yaml -o out\step-sequence
 

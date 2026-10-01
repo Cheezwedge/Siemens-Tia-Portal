@@ -60,6 +60,21 @@ def main(argv: List[str] | None = None) -> int:
     p_lint.add_argument("--list", action="store_true", dest="list_rules",
                         help="print the rule catalogue and exit")
 
+    p_xl = sub.add_parser(
+        "excel",
+        help="write a machine workbook - empty, or filled in from an existing spec",
+    )
+    p_xl.add_argument("workbook", help="the .xlsx to write")
+    p_xl.add_argument("--from", dest="source", help="a spec (.yaml) to fill it from")
+    p_xl.add_argument("--force", action="store_true", help="overwrite an existing file")
+
+    p_fx = sub.add_parser(
+        "from-excel",
+        help="convert a machine workbook to a YAML spec, for review and version control",
+    )
+    p_fx.add_argument("workbook")
+    p_fx.add_argument("-o", "--out", help="YAML file to write (default: next to the workbook)")
+
     p_self = sub.add_parser(
         "selftest",
         help="check this installation end to end and zip the results into one file",
@@ -93,6 +108,10 @@ def main(argv: List[str] | None = None) -> int:
             return _cmd_lint(args)
         if args.command == "selftest":
             return _cmd_selftest(args)
+        if args.command == "excel":
+            return _cmd_excel(args)
+        if args.command == "from-excel":
+            return _cmd_from_excel(args)
     except model.SpecError as exc:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
@@ -103,6 +122,47 @@ def main(argv: List[str] | None = None) -> int:
         print(f"ERROR   {exc}", file=sys.stderr)
         return 2
     return 1
+
+
+def _cmd_excel(args) -> int:
+    from . import workbook
+
+    if os.path.exists(args.workbook) and not args.force:
+        print(f"ERROR   {args.workbook} already exists. Pass --force to overwrite it.",
+              file=sys.stderr)
+        return 2
+    raw = None
+    if args.source:
+        import yaml
+
+        with open(args.source, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        # Load it properly too, so a spec that would not build is not turned into a
+        # workbook that looks fine.
+        model.load(args.source)
+    workbook.write_workbook(args.workbook, raw)
+    what = f"filled in from {args.source}" if args.source else "empty template"
+    print(f"Wrote {args.workbook} ({what}).")
+    print("Fill in the Machine and Equipment sheets, then:")
+    print(f"  tiagen validate {args.workbook}")
+    print(f"  tiagen build    {args.workbook} -o out")
+    return 0
+
+
+def _cmd_from_excel(args) -> int:
+    import yaml
+
+    from . import workbook
+
+    raw = workbook.read_workbook(args.workbook)
+    model.from_dict(raw)                      # same checks as validate's first stage
+    out = args.out or os.path.splitext(args.workbook)[0] + ".yaml"
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(f"# Generated from {os.path.basename(args.workbook)} by tiagen from-excel.\n")
+        fh.write("# The workbook is the source; regenerate this rather than editing it.\n\n")
+        yaml.safe_dump(raw, fh, sort_keys=False, allow_unicode=True, width=100)
+    print(f"Wrote {out}")
+    return 0
 
 
 def _cmd_selftest(args) -> int:

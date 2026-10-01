@@ -53,8 +53,10 @@ python -m tiagen import-steps steps.csv -o seq.yaml       # step spreadsheet -> 
 python -m tiagen lint     ../out/minimal/scl              # house rules over an export
 python -m tiagen lint --list                             # the rule catalogue
 python -m tiagen selftest                                # check an install end to end, zip the results
+python -m tiagen excel book.xlsx [--from spec.yaml]      # machine workbook: empty, or from a spec
+python -m tiagen build book.xlsx -o ../out/x            # validate/build/explain accept .xlsx directly
 
-cd .. && python3 -m unittest discover -s generator/tests  # 96 tests, keep them green
+cd .. && python3 -m unittest discover -s generator/tests  # 109 tests, keep them green
 ```
 
 The Openness driver only runs on Windows with TIA Portal V21 installed; it cannot be

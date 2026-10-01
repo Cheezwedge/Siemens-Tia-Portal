@@ -148,6 +148,7 @@ every device type**.
 | [12 Rule catalogue](docs/12-rule-catalogue.md) | Every review rule, where it runs, and what carried over from the Panasonic ladder reviewer |
 | [13 Your own toolchain](docs/13-own-toolchain-options.md) | Six ways to replace an Eigen subscription with a tool you own, and how to install it on a corporate Windows machine |
 | [14 Testing](docs/14-testing.md) | What is checked where: Linux CI, a Windows package smoke test, and `tiagen selftest` on the TIA PC |
+| [15 The machine workbook](docs/15-excel-workbook.md) | Describing a whole machine in Excel - IO list, hardware, step table - and building straight from it |
 | [openness/README.md](openness/README.md) | Building and running the driver |
 
 ---

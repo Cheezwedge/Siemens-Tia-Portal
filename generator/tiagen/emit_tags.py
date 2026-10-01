@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import dataclass
+import os
 from datetime import datetime, timezone
 from typing import Dict, List
 from xml.sax.saxutils import escape
@@ -84,10 +85,10 @@ def emit_xml(table_name: str, tags: List[Tag], engineering_version: str = "V21",
     into TIA by hand, or into a project the driver cannot reach.
 
     Verify the header against a real export from your own TIA version once - see
-    docs/03-simaticml-reference.md, "Adopting your own export as the template".
+    docs/03-simaticml-and-source-formats.md, "Adopting your own export as the template".
     """
     ids = _IdGen()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = _created_timestamp()
 
     lines = ['<?xml version="1.0" encoding="utf-8"?>', "<Document>"]
     lines.append(f'  <Engineering version="{escape(engineering_version)}" />')
@@ -162,3 +163,18 @@ def kind_of_table(table: str) -> str:
         if name == table:
             return kind
     return dev.DI
+
+
+def _created_timestamp() -> str:
+    """The <Created> stamp: fixed, so the same spec always produces the same bytes.
+
+    Wall-clock time here made every build differ from the last, which defeats both
+    diffing generated output in review and the claim that a spec fully determines
+    what it produces. Nothing reads this value - the driver creates tags through the
+    API, and TIA ignores it on import. SOURCE_DATE_EPOCH, the reproducible-builds
+    convention, sets a real date for anyone who wants one.
+    """
+    epoch = os.environ.get("SOURCE_DATE_EPOCH", "").strip()
+    moment = (datetime.fromtimestamp(int(epoch), timezone.utc) if epoch.isdigit()
+              else datetime(2000, 1, 1, tzinfo=timezone.utc))
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")

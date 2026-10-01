@@ -233,6 +233,10 @@ def parse_word_address(kind: str, address: str) -> int:
 # Loading
 # --------------------------------------------------------------------------
 def load(path: str) -> Spec:
+    if path.lower().endswith((".xlsx", ".xlsm")):
+        # Imported here: workbook imports this module for SpecError.
+        from . import workbook
+        return from_dict(workbook.read_workbook(path))
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
     if path.lower().endswith((".yaml", ".yml")):
